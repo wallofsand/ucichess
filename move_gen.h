@@ -15,7 +15,8 @@ namespace MoveGen {
     extern bool double_check;
     extern U64 op_atk;
     extern U64 check_ray;
-    extern U64 pins; // bitboard of active player's pinned pieces
+    // bitboard of active player's pinned pieces
+    extern U64 pins;
 
     void clear_array(int start=0);
     void gen_op_attack_mask(Board::board_type* bp);

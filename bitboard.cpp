@@ -1,6 +1,13 @@
 // Mostly copied from my original cppChess engine
 #include "bitboard.h"
 
+U64 BB::sq_bb[64] = {};
+void BB::init_sq_bb() {
+    for (int i = 0; i < 64; i++) {
+        sq_bb[i] = 1ull << i;
+    }
+}
+
 /**
  * bit_scan_forward
  * "Using de Bruijn Squences to locate the least significant one bit."
@@ -21,7 +28,7 @@ unsigned int BB::bit_scan_forward (U64 bb) {
  * @return true if the bit at sq is set
  */
 bool BB::contains_square(U64 bb, int sq) {
-    return bb & 1ull << sq;
+    return bb & sq_bb[sq];
 }
 
 /**
@@ -332,8 +339,16 @@ U64 BB::flip_diag_A1H8(U64 x) {
  * @param x any bitboard
  * @return bitboard x rotated 90 degrees clockwise
  */
-U64 BB::rotate_clockwise (U64 x) {
+U64 BB::rotate_clockwise(U64 x) {
     return flip_vertical(flip_diag_A1H8(x));
+}
+
+/** Rotate a bitboard by 90 degrees counterclockwise.
+ * @param x any bitboard
+ * @return bitboard x rotated 90 degress counterclockwise
+ */
+U64 BB::rotate_counterclockwise(U64 x) {
+    return flip_diag_A1H8(flip_vertical(x));
 }
 
 /**

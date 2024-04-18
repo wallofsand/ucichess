@@ -34,8 +34,9 @@ namespace BB {
         35, 45, 25,  8, 57, 17, 54, 12,
         44, 24, 16, 53, 43, 15, 42, 41,
     };
-
+    extern U64 sq_bb[64];
     // Functions:
+    void init_sq_bb();
     unsigned int bit_scan_forward (U64 bb);
     U64 nort_shift_one(U64 bb);
     U64 sout_shift_one(U64 bb);
@@ -65,6 +66,7 @@ namespace BB {
     U64 flip_vertical(U64 x);
     U64 flip_diag_A1H8(U64 x);
     U64 rotate_clockwise(U64 x);
+    U64 rotate_counterclockwise(U64 x);
     bool contains_square(U64 bb, int sq);
     int count_bits(U64 bb);
     // void print_U64(U64 bb, std::string name = "", bool fmt = false);

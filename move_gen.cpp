@@ -115,8 +115,8 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     U64 op  = *bp->bb_color[!bp->black_to_move];
 
     // knights
-    check_ray      = bp->knights & op & Compass::knight_attacks[ksq];
-    check          = check_ray;
+    check_ray = bp->knights & op & Compass::knight_attacks[ksq];
+    check     = check_ray;
 
     // pawns
     U64 attackers  = BB::gen_shift(king & BB::NOT_H_FILE, Dir::PAWN_DIR[!bp->black_to_move] + 1);
@@ -126,24 +126,42 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     check = check || attackers;
 
     // bishops, queens
-    attackers      = BB::NoEa_attacks(king, ~bp->occ);
-    attackers     |= BB::NoWe_attacks(king, ~bp->occ);
-    attackers     |= BB::SoEa_attacks(king, ~bp->occ);
-    attackers     |= BB::SoWe_attacks(king, ~bp->occ);
-    attackers     &= op & (bp->queens | bp->bishops);
-    check_ray      = check_ray ? check_ray : attackers;
-    double_check   = check && attackers;
-    check = check || attackers;
+    attackers  = BB::NoEa_attacks(king, ~bp->occ);
+    attackers |= BB::NoWe_attacks(king, ~bp->occ);
+    attackers |= BB::SoEa_attacks(king, ~bp->occ);
+    attackers |= BB::SoWe_attacks(king, ~bp->occ);
+    attackers &= op & (bp->queens | bp->bishops);
+    if (attackers && !check_ray) {
+        attackers = BB::NoEa_attacks(king, ~bp->occ);
+        check_ray = attackers & op & (bp->queens | bp->bishops) ? attackers : check_ray;
+        attackers = BB::NoWe_attacks(king, ~bp->occ);
+        check_ray = attackers & op & (bp->queens | bp->bishops) ? attackers : check_ray;
+        attackers = BB::SoEa_attacks(king, ~bp->occ);
+        check_ray = attackers & op & (bp->queens | bp->bishops) ? attackers : check_ray;
+        attackers = BB::SoWe_attacks(king, ~bp->occ);
+        check_ray = attackers & op & (bp->queens | bp->bishops) ? attackers : check_ray;
+    }
+    double_check = check && attackers;
+    check        = check || attackers;
 
     // rooks, queens
-    attackers      = BB::nort_attacks(king, ~bp->occ);
-    attackers     |= BB::sout_attacks(king, ~bp->occ);
-    attackers     |= BB::east_attacks(king, ~bp->occ);
-    attackers     |= BB::west_attacks(king, ~bp->occ);
-    attackers     &= op & (bp->queens | bp->rooks);
-    check_ray      = check_ray ? check_ray : attackers;
-    double_check   = check && attackers;
-    check = check || attackers;
+    attackers  = BB::nort_attacks(king, ~bp->occ);
+    attackers |= BB::sout_attacks(king, ~bp->occ);
+    attackers |= BB::east_attacks(king, ~bp->occ);
+    attackers |= BB::west_attacks(king, ~bp->occ);
+    attackers &= op & (bp->queens | bp->rooks);
+    if (attackers && !check_ray) {
+        attackers = BB::nort_attacks(king, ~bp->occ);
+        check_ray = attackers & op & (bp->queens | bp->rooks) ? attackers : check_ray;
+        attackers = BB::sout_attacks(king, ~bp->occ);
+        check_ray = attackers & op & (bp->queens | bp->rooks) ? attackers : check_ray;
+        attackers = BB::east_attacks(king, ~bp->occ);
+        check_ray = attackers & op & (bp->queens | bp->rooks) ? attackers : check_ray;
+        attackers = BB::west_attacks(king, ~bp->occ);
+        check_ray = attackers & op & (bp->queens | bp->rooks) ? attackers : check_ray;
+    }
+    double_check = check && attackers;
+    check        = check || attackers;
 }
 
 void MoveGen::gen_moves(Board::board_type* bp) {
@@ -169,10 +187,19 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     U64 doubles = BB::gen_shift(moves & (bp->black_to_move ? BB::ROW_6 : BB::ROW_3), Dir::PAWN_DIR[bp->black_to_move]) & ~bp->occ;
     U64 promotions = moves & (BB::ROW_1 | BB::ROW_8);
     moves ^= promotions;
+    moves      &= check ? check_ray : ~0ull;
+    doubles    &= check ? check_ray : ~0ull;
+    promotions &= check ? check_ray : ~0ull;
     // serialize the doubles bitboard:
     while (doubles) {
         int endsq = BB::bit_scan_forward(doubles);
         int start = endsq - 2*Dir::PAWN_DIR[bp->black_to_move];
+        // only pinned pawns in front of the king can advance
+        if ((pins & BB::sq_bb[start]) && !(BB::A_FILE << (start&7) & bp->kings & *bp->bb_color[bp->black_to_move])) {
+            // this move is illegal because of a pin
+            doubles &= doubles - 1; // clear the LS1B
+            continue;
+        }
         search_moves_128x30[search_index] = Move::build_move(Move::Flag::PAWN_DOUBLE_ADVANCE, start, endsq, CH::PAWN, 0);
         search_index++;
         doubles &= doubles - 1; // clear the LS1B
@@ -181,6 +208,12 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     while (moves) {
         int endsq = BB::bit_scan_forward(moves);
         int start = endsq - Dir::PAWN_DIR[bp->black_to_move];
+        // only pinned pawns in front of the king can advance
+        if ((pins & BB::sq_bb[start]) && !(BB::A_FILE << (start&7) & bp->kings & *bp->bb_color[bp->black_to_move])) {
+            // this move is illegal because of a pin
+            moves &= moves - 1; // clear the LS1B
+            continue;
+        }
         search_moves_128x30[search_index] = Move::build_move(0, start, endsq, CH::PAWN, 0);
         search_index++;
         moves &= moves - 1; // clear the LS1B
@@ -188,7 +221,13 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     // serialize the promotions bitboard:
     while (promotions) {
         int endsq = BB::bit_scan_forward(promotions);
+        // pinned pawns cannot promote without capture
         int start = endsq - Dir::PAWN_DIR[bp->black_to_move];
+        if (pins & BB::sq_bb[start]) {
+            // this move is illegal because of a pin
+            promotions &= promotions - 1; // clear the LS1B
+            continue;
+        }
         search_moves_128x30[search_index]   = Move::build_move(Move::Flag::PROMOTE_QUEEN, start, endsq, CH::PAWN, 0);
         search_moves_128x30[search_index+1] = Move::build_move(Move::Flag::PROMOTE_ROOK, start, endsq, CH::PAWN, 0);
         search_moves_128x30[search_index+2] = Move::build_move(Move::Flag::PROMOTE_BISHOP, start, endsq, CH::PAWN, 0);
@@ -198,20 +237,19 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     }
     // is there an ep capture available?
     U64 epsq = bp->ep_file < 8 ? (BB::A_FILE << bp->ep_file & (bp->black_to_move ? BB::ROW_3 : BB::ROW_6)) : 0ull;
+    // is the ep pawn delivering check?
+    U64 ep_ray = check_ray & BB::gen_shift(epsq, Dir::PAWN_DIR[!bp->black_to_move]) & bp->pawns & *bp->bb_color[!bp->black_to_move];
     // pawn captures east
     moves = BB::gen_shift(pawns & BB::NOT_H_FILE, Dir::DIRS[4+2*bp->black_to_move]) & (*bp->bb_color[!bp->black_to_move] | epsq);
     promotions = moves & (BB::ROW_1 | BB::ROW_8);
     moves ^= promotions;
-    // if (bp->occ == 0b1111111111111101000000000000001000000001000000001111111011111111) {
-    //     Board::print_bitboards(bp);
-    //     BB::print_binary_string(BB::build_binary_string(*bp->bb_color[!bp->black_to_move]), "op");
-    //     BB::print_binary_string(BB::build_binary_string(epsq), "ep square");
-    //     BB::print_binary_string(BB::build_binary_string(moves), "east captures");
-    // }
+    moves      &= check ? check_ray | ep_ray : ~0ull;
+    promotions &= check ? check_ray          : ~0ull;
     while (moves) {
         int endsq = BB::bit_scan_forward(moves);
         int start = endsq - Dir::DIRS[4+2*bp->black_to_move];
         uint8_t flag = epsq & moves & -moves ? Move::Flag::EN_PASSANT : Move::Flag::CAPTURE;
+        // check for pins
         int target = flag == Move::Flag::EN_PASSANT ? CH::PAWN : Board::piece_at(bp, endsq);
         search_moves_128x30[search_index] = Move::build_move(flag, start, endsq, CH::PAWN, target);
         search_index++;
@@ -232,6 +270,8 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     moves = BB::gen_shift(pawns & BB::NOT_A_FILE, Dir::DIRS[5+2*bp->black_to_move]) & (*bp->bb_color[!bp->black_to_move] | epsq);
     promotions = moves & (BB::ROW_1 | BB::ROW_8);
     moves ^= promotions;
+    moves      &= check ? check_ray | ep_ray : ~0ull;
+    promotions &= check ? check_ray          : ~0ull;
     while (moves) {
         int endsq = BB::bit_scan_forward(moves);
         int start = endsq - Dir::DIRS[5+2*bp->black_to_move];
@@ -256,11 +296,18 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
 
 void MoveGen::gen_knight_moves(Board::board_type* bp) {
     U64 knights = bp->knights & *bp->bb_color[bp->black_to_move];
+    // pinned knights can never move
+    knights &= ~pins;
     while (knights) {
         int start = BB::bit_scan_forward(knights);
         U64 moves = Compass::knight_attacks[start] & ~*bp->bb_color[bp->black_to_move];
         while (moves) {
             int end = BB::bit_scan_forward(moves);
+            if (check && !(BB::sq_bb[end] & check_ray)) {
+                // this move does not stop check
+                moves &= moves - 1; // clear the LS1B
+                continue;
+            }
             uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
             search_moves_128x30[search_index] = Move::build_move(
                 flag, start, end, CH::KNIGHT, flag ? Board::piece_bb(bp, moves & -moves) : 0
@@ -279,6 +326,7 @@ void MoveGen::gen_bishop_moves(Board::board_type* bp) {
         U64 moves = BB::NoEa_attacks(b&-b, ~bp->occ) | BB::NoWe_attacks(b&-b, ~bp->occ)
                   | BB::SoEa_attacks(b&-b, ~bp->occ) | BB::SoWe_attacks(b&-b, ~bp->occ);
         moves &= ~*bp->bb_color[bp->black_to_move];
+        moves &= check ? check_ray : ~0ull;
         while (moves) {
             uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
             int end = BB::bit_scan_forward(moves);
@@ -301,6 +349,7 @@ void MoveGen::gen_rook_moves(Board::board_type* bp) {
         int piece = bp->rooks & r & -r ? CH::ROOK : CH::QUEEN;
         // East/West moves
         U64 moves = Compass::get_rank_attacks(bp->occ, start) & ~*bp->bb_color[bp->black_to_move];
+        moves &= check ? check_ray : ~0ull;
         while (moves) {
             int end = BB::bit_scan_forward(moves);
             uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
@@ -312,10 +361,11 @@ void MoveGen::gen_rook_moves(Board::board_type* bp) {
         int rsq = (((start >> 3) | (start << 3)) & 63) ^ 56;
         // North/South moves
         moves = Compass::get_rank_attacks(rocc, rsq) & ~rcol;
+        moves = BB::rotate_counterclockwise(moves);
+        moves &= check ? check_ray : ~0ull;
         while (moves) {
-            uint8_t flag = moves & -moves & rocc ? Move::Flag::CAPTURE : 0;
+            uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
             int end = BB::bit_scan_forward(moves);
-            end = (((end >> 3) | (end << 3)) & 63) ^ 7;
             int target = flag ? Board::piece_at(bp, end) : 0;
             search_moves_128x30[search_index] = Move::build_move(flag, start, end, piece, target);
             search_index++;
@@ -377,24 +427,23 @@ Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
     int start = mv >>  4 & 63;
     int end   = mv >> 10 & 63;
     int piece = mv >> 16 &  7;
-    U64 sq0   = 1ull << start;
-    U64 sq1   = 1ull << end;
+    U64 sq0   = BB::sq_bb[start];
+    U64 sq1   = BB::sq_bb[end];
     // moving piece:
     *newb->bb_piece[piece]                                          ^= sq0;
     *newb->bb_piece[flag&Move::Flag::PROMOTION ? (mv&7)+1 : piece]  ^= sq1;
     *newb->bb_color[newb->black_to_move]                            ^= sq0 | sq1;
     // captured piece:
-    if (flag & Move::Flag::CAPTURE && flag != Move::Flag::EN_PASSANT)
-    {
+    if (flag & Move::Flag::CAPTURE && flag != Move::Flag::EN_PASSANT) {
         *newb->bb_piece[(mv>>22&7)-1]         ^= sq1;
         *newb->bb_color[!newb->black_to_move] ^= sq1;
     }
     // castling kingside:
-    *newb->bb_piece[CH::ROOK]            ^= flag == Move::Flag::CASTLE_KINGSIDE ? newb->black_to_move ? (1ull << SQ::f8 | 1ull << SQ::h8) : (1ull << SQ::f1 | 1ull << SQ::h1) : 0ull;
-    *newb->bb_color[newb->black_to_move] ^= flag == Move::Flag::CASTLE_KINGSIDE ? newb->black_to_move ? (1ull << SQ::f8 | 1ull << SQ::h8) : (1ull << SQ::f1 | 1ull << SQ::h1) : 0ull;
+    *newb->bb_piece[CH::ROOK]            ^= flag == Move::Flag::CASTLE_KINGSIDE ? newb->black_to_move ? (BB::sq_bb[SQ::f8] | BB::sq_bb[SQ::h8]) : (BB::sq_bb[SQ::f1] | BB::sq_bb[SQ::h1]) : 0ull;
+    *newb->bb_color[newb->black_to_move] ^= flag == Move::Flag::CASTLE_KINGSIDE ? newb->black_to_move ? (BB::sq_bb[SQ::f8] | BB::sq_bb[SQ::h8]) : (BB::sq_bb[SQ::f1] | BB::sq_bb[SQ::h1]) : 0ull;
     // castling queenside:
-    *newb->bb_piece[CH::ROOK]            ^= flag == Move::Flag::CASTLE_QUEENSIDE ? newb->black_to_move ? (1ull << SQ::d8 | 1ull << SQ::a8) : (1ull << SQ::d1 | 1ull << SQ::a1) : 0ull;
-    *newb->bb_color[newb->black_to_move] ^= flag == Move::Flag::CASTLE_QUEENSIDE ? newb->black_to_move ? (1ull << SQ::d8 | 1ull << SQ::a8) : (1ull << SQ::d1 | 1ull << SQ::a1) : 0ull;
+    *newb->bb_piece[CH::ROOK]            ^= flag == Move::Flag::CASTLE_QUEENSIDE ? newb->black_to_move ? (BB::sq_bb[SQ::d8] | BB::sq_bb[SQ::a8]) : (BB::sq_bb[SQ::d1] | BB::sq_bb[SQ::a1]) : 0ull;
+    *newb->bb_color[newb->black_to_move] ^= flag == Move::Flag::CASTLE_QUEENSIDE ? newb->black_to_move ? (BB::sq_bb[SQ::d8] | BB::sq_bb[SQ::a8]) : (BB::sq_bb[SQ::d1] | BB::sq_bb[SQ::a1]) : 0ull;
     // en passant:
     *newb->bb_piece[CH::PAWN]             ^= flag == Move::Flag::EN_PASSANT ? BB::gen_shift(sq1, Dir::PAWN_DIR[!newb->black_to_move]) : 0ull;
     *newb->bb_color[!newb->black_to_move] ^= flag == Move::Flag::EN_PASSANT ? BB::gen_shift(sq1, Dir::PAWN_DIR[!newb->black_to_move]) : 0ull;

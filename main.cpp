@@ -22,6 +22,7 @@ struct stack_node {
 
 int main (int args, char** argv) {
     // precompute board data
+    BB::init_sq_bb();
     Compass::compute_edge_distances();
     Compass::compute_knight_attacks();
     Compass::compute_rank_attacks();
@@ -53,6 +54,10 @@ int main (int args, char** argv) {
             Move::move32 mv = MoveGen::search_moves_128x30[idx];
             std::cout << Move::name(mv) << " ";
             if (idx != MoveGen::search_index-1 && idx % 5 == 4) std::cout << std::endl;
+        }
+        if (MoveGen::check) {
+            BB::print_binary_string(BB::build_binary_string(MoveGen::check_ray), "check_ray");
+            std::cout << std::endl << "Check!";
         }
         std::cout << std::endl << "Choose a move: ";
 

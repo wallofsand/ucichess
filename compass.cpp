@@ -24,7 +24,7 @@ U64 Compass::get_rank_attacks(U64 occ, int sq) {
 U64 Compass::build_ray(int sq, int dir_index) {
     U64 ray = 0;
     for (int step = 1; step <= Compass::edge_distance_64x8[sq][dir_index]; step++) {
-        ray |= 1ull << (sq + step * Dir::DIRS[dir_index]);
+        ray |= BB::sq_bb[sq + step * Dir::DIRS[dir_index]];
     }
     return ray;
 }
@@ -39,7 +39,7 @@ U64 Compass::build_ray(int sq[2]) {
             if (sq[0] + step * Dir::DIRS[i] == sq[1]) {
                 U64 ray = 0;
                 while(sq[0] != sq[1]) {
-                    ray |= 1ull << sq[0];
+                    ray |= BB::sq_bb[sq[0]];
                     sq += Dir::DIRS[i];
                 }
                 return ray;
@@ -53,28 +53,28 @@ U64 Compass::build_ray(int sq[2]) {
 // retuns zero if no such ray exists
 // an optional occupancy array can be passed to stop the ray
 U64 Compass::ray_square(int start, int end, U64 occ) {
-    U64 ray = BB::nort_attacks(1ull << start, ~occ);
+    U64 ray = BB::nort_attacks(BB::sq_bb[start], ~occ);
     if (BB::contains_square(ray, end))
         return ray;
-    ray = BB::NoEa_attacks(1ull << start, ~occ);
+    ray = BB::NoEa_attacks(BB::sq_bb[start], ~occ);
     if (BB::contains_square(ray, end))
         return ray;
-    ray = BB::east_attacks(1ull << start, ~occ);
+    ray = BB::east_attacks(BB::sq_bb[start], ~occ);
     if (BB::contains_square(ray, end))
         return ray;
-    ray = BB::SoEa_attacks(1ull << start, ~occ);
+    ray = BB::SoEa_attacks(BB::sq_bb[start], ~occ);
     if (BB::contains_square(ray, end))
         return ray;
-    ray = BB::sout_attacks(1ull << start, ~occ);
+    ray = BB::sout_attacks(BB::sq_bb[start], ~occ);
     if (BB::contains_square(ray, end))
         return ray;
-    ray = BB::SoWe_attacks(1ull << start, ~occ);
+    ray = BB::SoWe_attacks(BB::sq_bb[start], ~occ);
     if (BB::contains_square(ray, end))
         return ray;
-    ray = BB::west_attacks(1ull << start, ~occ);
+    ray = BB::west_attacks(BB::sq_bb[start], ~occ);
     if (BB::contains_square(ray, end))
         return ray;
-    ray = BB::NoWe_attacks(1ull << start, ~occ);
+    ray = BB::NoWe_attacks(BB::sq_bb[start], ~occ);
     if (BB::contains_square(ray, end))
         return ray;
     return 0ull;
@@ -130,23 +130,23 @@ void Compass::compute_knight_attacks() {
         knight_attacks[sq] = 0ull;
         if (edge_distance_64x8[sq][0] > 0) {
             if (edge_distance_64x8[sq][0] > 1 && edge_distance_64x8[sq][1] > 0)
-                knight_attacks[sq] |= 1ull << (sq + Dir::NNE);
+                knight_attacks[sq] |= BB::sq_bb[sq + Dir::NNE];
             if (edge_distance_64x8[sq][1] > 1)
-                knight_attacks[sq] |= 1ull << (sq + Dir::NEE);
+                knight_attacks[sq] |= BB::sq_bb[sq + Dir::NEE];
             if (edge_distance_64x8[sq][0] > 1 && edge_distance_64x8[sq][3] > 0)
-                knight_attacks[sq] |= 1ull << (sq + Dir::NNW);
+                knight_attacks[sq] |= BB::sq_bb[sq + Dir::NNW];
             if (edge_distance_64x8[sq][3] > 1)
-                knight_attacks[sq] |= 1ull << (sq + Dir::NWW);
+                knight_attacks[sq] |= BB::sq_bb[sq + Dir::NWW];
         }
         if (edge_distance_64x8[sq][2] > 0) {
             if (edge_distance_64x8[sq][2] > 1 && edge_distance_64x8[sq][1] > 0)
-                knight_attacks[sq] |= 1ull << (sq + Dir::SSE);
+                knight_attacks[sq] |= BB::sq_bb[sq + Dir::SSE];
             if (edge_distance_64x8[sq][1] > 1)
-                knight_attacks[sq] |= 1ull << (sq + Dir::SEE);
+                knight_attacks[sq] |= BB::sq_bb[sq + Dir::SEE];
             if (edge_distance_64x8[sq][2] > 1 && edge_distance_64x8[sq][3] > 0)
-                knight_attacks[sq] |= 1ull << (sq + Dir::SSW);
+                knight_attacks[sq] |= BB::sq_bb[sq + Dir::SSW];
             if (edge_distance_64x8[sq][3] > 1)
-                knight_attacks[sq] |= 1ull << (sq + Dir::SWW);
+                knight_attacks[sq] |= BB::sq_bb[sq + Dir::SWW];
         }
     }
 }
@@ -155,7 +155,7 @@ void Compass::compute_knight_attacks() {
 void Compass::compute_rank_attacks() {
     for (U64 occ = 0; occ < 128; occ+=2) {
         for (int rksq = 0; rksq < 8; rksq++) {
-            U64 rook = 1ull << rksq;
+            U64 rook = BB::sq_bb[rksq];
             first_rank_attacks_64x8[4*occ+rksq]  = BB::east_attacks(rook, ~occ) & 255;
             first_rank_attacks_64x8[4*occ+rksq] |= BB::west_attacks(rook, ~occ) & 255;
             first_rank_attacks_64x8[4*occ+rksq] &= ~rook;
