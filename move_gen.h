@@ -3,8 +3,8 @@
 #define MOVE_GEN_H
 
 #include "bitboard.h"
-#include "move.h"
 #include "board.h"
+#include "move.h"
 
 namespace MoveGen {
     // 128 moves per 30 ply of search = 3840

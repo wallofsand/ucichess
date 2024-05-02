@@ -71,7 +71,7 @@ namespace Hash {
         U64 pieces = bp->occ; // pieces left to hash
         while (pieces) { // hash the pieces on the board
             int sq = BB::bit_scan_forward(pieces);
-            h ^= sq_color_piece_64x2x6[sq][Board::color_at(bp, sq)][Board::piece_at(bp, sq)];
+            h ^= sq_color_piece_64x2x6[sq][bp->color_at(sq)][bp->piece_at(sq)];
             pieces &= pieces - 1; // clear LS1B
         }
         h ^= ep_file[bp->ep_file]; // en passant

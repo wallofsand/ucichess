@@ -13,6 +13,21 @@ U64 MoveGen::op_atk {};
 U64 MoveGen::check_ray {};
 U64 MoveGen::pins {};
 
+void MoveGen::gen_moves(Board::board_type* bp) {
+    search_index = search_ply << 7;
+    // setup functions:
+    gen_op_attack_mask(bp);
+    checks_exist(bp);
+    find_pins(bp);
+    // generate moves:
+    gen_king_moves(bp);
+    if (double_check) return;
+    gen_rook_moves(bp);
+    gen_bishop_moves(bp);
+    gen_knight_moves(bp);
+    gen_pawn_moves(bp);
+}
+
 void MoveGen::clear_array(int start) {
     for (int idx = start; idx < 128*30; idx++) {
         search_moves_128x30[idx] = 0;
@@ -107,11 +122,10 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     check = false;
     double_check = false;
     U64 king = bp->kings & *bp->bb_color[bp->black_to_move];
-    BB::print_binary_string(BB::build_binary_string(op_atk), "op_atk");
+    check_ray = 0ull;
 
     if (!(king & op_atk)) // check only exists if king is attacked
         return;
-    std::cout << "AAA!!!" << std::endl;
 
     int ksq = BB::bit_scan_forward(king);
     U64 op  = *bp->bb_color[!bp->black_to_move];
@@ -126,7 +140,6 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     attackers     &= op & bp->pawns;
     check_ray      = check_ray ? check_ray : attackers;
     check = check || attackers;
-    BB::print_binary_string(BB::build_binary_string(check_ray), "check_ray");
 
     // bishops, queens
     U64 op_bq     = op & (bp->queens | bp->bishops);
@@ -139,7 +152,6 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     check         = check || attackers;
     if (attackers && !check_ray) {
         attackers = BB::NoEa_attacks(king, ~bp->occ);
-        BB::print_binary_string(BB::build_binary_string(attackers), "attackers");
         check_ray = attackers & op_bq ? attackers : check_ray;
         attackers = BB::NoWe_attacks(king, ~bp->occ);
         check_ray = attackers & op_bq ? attackers : check_ray;
@@ -168,21 +180,6 @@ void MoveGen::checks_exist(Board::board_type* bp) {
         attackers = BB::west_attacks(king, ~bp->occ);
         check_ray = attackers & op_rq ? attackers : check_ray;
     }
-}
-
-void MoveGen::gen_moves(Board::board_type* bp) {
-    search_index = (search_ply<<7);
-    // setup functions:
-    gen_op_attack_mask(bp);
-    checks_exist(bp);
-    find_pins(bp);
-    // generate moves:
-    gen_king_moves(bp);
-    if (double_check) return;
-    gen_rook_moves(bp);
-    gen_bishop_moves(bp);
-    gen_knight_moves(bp);
-    gen_pawn_moves(bp);
 }
 
 // pawn moves, captures, promotions, and en passant
@@ -239,8 +236,8 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
             promotions &= promotions - 1; // clear the LS1B
             continue;
         }
-        search_moves_128x30[search_index]   = Move::build_move(Move::Flag::PROMOTE_QUEEN, start, endsq, CH::PAWN, 0);
-        search_moves_128x30[search_index+1] = Move::build_move(Move::Flag::PROMOTE_ROOK, start, endsq, CH::PAWN, 0);
+        search_moves_128x30[search_index]   = Move::build_move(Move::Flag::PROMOTE_QUEEN,  start, endsq, CH::PAWN, 0);
+        search_moves_128x30[search_index+1] = Move::build_move(Move::Flag::PROMOTE_ROOK,   start, endsq, CH::PAWN, 0);
         search_moves_128x30[search_index+2] = Move::build_move(Move::Flag::PROMOTE_BISHOP, start, endsq, CH::PAWN, 0);
         search_moves_128x30[search_index+3] = Move::build_move(Move::Flag::PROMOTE_KNIGHT, start, endsq, CH::PAWN, 0);
         search_index += 4;
@@ -251,9 +248,15 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     U64 epsq = bp->ep_file < 8 ? (BB::A_FILE << bp->ep_file & (bp->black_to_move ? BB::ROW_3 : BB::ROW_6)) : 0ull;
     // is the ep pawn delivering check?
     U64 ep_ray = check_ray & BB::gen_shift(epsq, Dir::PAWN_DIR[!bp->black_to_move]) & bp->pawns & *bp->bb_color[!bp->black_to_move];
-    if (ep_ray) {
-        std::cout << "!!! ep_ray !!!" << std::endl;
-    }
+    // if (ep_ray) {
+    //     std::cout << "!!! ep_ray !!!" << std::endl;
+    //     Board::print_board(bp);
+    //     std::cout << "in check: " << check << std::endl;
+    //     Board::print_bitboards(bp);
+    //     BB::print_binary_string(BB::build_binary_string(check_ray), "check_ray");
+    //     BB::print_binary_string(BB::build_binary_string(ep_ray), "ep_ray");
+    //     std::cout << "!!! ep_ray !!!" << std::endl;
+    // }
 
     // pawn captures east
     moves = BB::gen_shift(pawns & BB::NOT_H_FILE, Dir::DIRS[4+2*bp->black_to_move]) & (*bp->bb_color[!bp->black_to_move] | epsq);
@@ -265,15 +268,20 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
         int endsq = BB::bit_scan_forward(moves);
         int start = endsq - Dir::DIRS[4+2*bp->black_to_move];
         uint8_t flag = epsq & moves & -moves ? Move::Flag::EN_PASSANT : Move::Flag::CAPTURE;
-        if ((pins & BB::sq_bb[start]) && !(BB::A_FILE << (start&7) & bp->kings & *bp->bb_color[bp->black_to_move])) {
-        if (pins & BB::sq_bb[start]) {
-            if (!bp->black_to_move && BB::SoWe_attacks(BB::sq_bb[start], ~king)) {
-                
-            } else if (bp->black_to_move && BB::NoWe_attacks(BB::sq_bb[start], ~king)) {
-                
+        if (pins & BB::sq_bb[start]) { // is the moving pawn pinned?
+            if (bp->black_to_move) {
+                if (!(king & BB::NoWe_attacks(BB::sq_bb[start], ~bp->occ))) { // can it capture along the pin ray?
+                    moves &= moves - 1; // clear the LS1B
+                    continue;
+                }
+            } else {
+                if (!(king & BB::SoWe_attacks(BB::sq_bb[start], ~bp->occ))) { // can it capture along the pin ray?
+                    moves &= moves - 1; // clear the LS1B
+                    continue;
+                }
             }
         }
-        int target = flag == Move::Flag::EN_PASSANT ? CH::PAWN : Board::piece_at(bp, endsq);
+        int target = flag == Move::Flag::EN_PASSANT ? CH::PAWN : bp->piece_at(endsq);
         search_moves_128x30[search_index] = Move::build_move(flag, start, endsq, CH::PAWN, target);
         search_index++;
         moves &= moves - 1; // clear the LS1B
@@ -281,7 +289,7 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     while (promotions) {
         int endsq = BB::bit_scan_forward(promotions);
         int start = endsq - Dir::DIRS[5+2*bp->black_to_move];
-        int target = Board::piece_at(bp, endsq);
+        int target = bp->piece_at(endsq);
         search_moves_128x30[search_index]   = Move::build_move(Move::Flag::CAPTURE_PROMOTE_QUEEN,  start, endsq, CH::PAWN, target);
         search_moves_128x30[search_index+1] = Move::build_move(Move::Flag::CAPTURE_PROMOTE_ROOK,   start, endsq, CH::PAWN, target);
         search_moves_128x30[search_index+2] = Move::build_move(Move::Flag::CAPTURE_PROMOTE_BISHOP, start, endsq, CH::PAWN, target);
@@ -300,7 +308,20 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
         int endsq = BB::bit_scan_forward(moves);
         int start = endsq - Dir::DIRS[5+2*bp->black_to_move];
         uint8_t flag = epsq & moves & -moves ? Move::Flag::EN_PASSANT : Move::Flag::CAPTURE;
-        int target = flag == Move::Flag::EN_PASSANT ? CH::PAWN : Board::piece_at(bp, endsq);
+        if (pins & BB::sq_bb[start]) { // is the moving pawn pinned?
+            if (bp->black_to_move) {
+                if (!(king & BB::NoEa_attacks(BB::sq_bb[start], ~bp->occ))) {
+                    moves &= moves - 1; // clear the LS1B
+                    continue;
+                }
+            } else {
+                if (!(king & BB::SoEa_attacks(BB::sq_bb[start], ~bp->occ))) {
+                    moves &= moves - 1; // clear the LS1B
+                    continue;
+                }
+            }
+        }
+        int target = flag == Move::Flag::EN_PASSANT ? CH::PAWN : bp->piece_at(endsq);
         search_moves_128x30[search_index] = Move::build_move(flag, start, endsq, CH::PAWN, target);
         search_index++;
         moves &= moves - 1; // clear the LS1B
@@ -308,7 +329,7 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     while (promotions) {
         int endsq = BB::bit_scan_forward(promotions);
         int start = endsq - Dir::DIRS[5+2*bp->black_to_move];
-        int target = Board::piece_at(bp, endsq);
+        int target = bp->piece_at(endsq);
         search_moves_128x30[search_index]   = Move::build_move(Move::Flag::CAPTURE_PROMOTE_QUEEN,  start, endsq, CH::PAWN, target);
         search_moves_128x30[search_index+1] = Move::build_move(Move::Flag::CAPTURE_PROMOTE_ROOK,   start, endsq, CH::PAWN, target);
         search_moves_128x30[search_index+2] = Move::build_move(Move::Flag::CAPTURE_PROMOTE_BISHOP, start, endsq, CH::PAWN, target);
@@ -334,7 +355,7 @@ void MoveGen::gen_knight_moves(Board::board_type* bp) {
             }
             uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
             search_moves_128x30[search_index] = Move::build_move(
-                flag, start, end, CH::KNIGHT, flag ? Board::piece_bb(bp, moves & -moves) : 0
+                flag, start, end, CH::KNIGHT, flag ? bp->piece_bb(moves & -moves) : 0
             );
             search_index++;
             moves &= moves - 1; // clear the LS1B
@@ -345,17 +366,32 @@ void MoveGen::gen_knight_moves(Board::board_type* bp) {
 
 void MoveGen::gen_bishop_moves(Board::board_type* bp) {
     U64 b = (bp->bishops | bp->queens) & *bp->bb_color[bp->black_to_move];
+    U64 king = bp->kings & *bp->bb_color[bp->black_to_move];
     while (b) {
+        U64 pin_ray = ~0ull;
+        if (pins & b&-b) { // is the moving piece pinned?
+            pin_ray = 0ull;
+            if (BB::NoEa_attacks(b&-b, ~bp->occ) & king) {
+                pin_ray = BB::SoWe_attacks(king, ~(bp->occ ^ b&-b));
+            } else if (BB::NoWe_attacks(b&-b, ~bp->occ) & king) {
+                pin_ray = BB::SoEa_attacks(king, ~(bp->occ ^ b&-b));
+            } else if (BB::SoEa_attacks(b&-b, ~bp->occ) & king) {
+                pin_ray = BB::NoWe_attacks(king, ~(bp->occ ^ b&-b));
+            } else if (BB::SoWe_attacks(b&-b, ~bp->occ) & king) {
+                pin_ray = BB::NoEa_attacks(king, ~(bp->occ ^ b&-b));
+            }
+        }
         int start = BB::bit_scan_forward(b);
         U64 moves = BB::NoEa_attacks(b&-b, ~bp->occ) | BB::NoWe_attacks(b&-b, ~bp->occ)
                   | BB::SoEa_attacks(b&-b, ~bp->occ) | BB::SoWe_attacks(b&-b, ~bp->occ);
+        moves &= pin_ray;
         moves &= ~*bp->bb_color[bp->black_to_move];
         moves &= check ? check_ray : ~0ull;
         while (moves) {
             uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
             int end = BB::bit_scan_forward(moves);
             search_moves_128x30[search_index] = Move::build_move(
-                flag, start, end, bp->bishops & b & -b ? CH::BISHOP : CH::QUEEN, flag ? Board::piece_at(bp, end) : 0
+                flag, start, end, bp->bishops & b & -b ? CH::BISHOP : CH::QUEEN, flag ? bp->piece_at(end) : 0
             );
             search_index++;
             moves &= moves - 1; // clear the LS1B
@@ -368,7 +404,21 @@ void MoveGen::gen_rook_moves(Board::board_type* bp) {
     U64 r    = (bp->rooks | bp->queens) & *bp->bb_color[bp->black_to_move];
     U64 rocc = BB::rotate_clockwise(bp->occ);
     U64 rcol = BB::rotate_clockwise(*bp->bb_color[bp->black_to_move]);
+    U64 king = bp->kings & *bp->bb_color[bp->black_to_move];
     while (r) {
+        U64 pin_ray = ~0ull;
+        if (pins & r&-r) { // is the moving piece pinned?
+            pin_ray = 0ull;
+            if (BB::nort_attacks(r&-r, ~bp->occ) & king) {
+                pin_ray = BB::sout_attacks(king, ~(bp->occ ^ r&-r));
+            } else if (BB::sout_attacks(r&-r, ~bp->occ) & king) {
+                pin_ray = BB::nort_attacks(king, ~(bp->occ ^ r&-r));
+            } else if (BB::east_attacks(r&-r, ~bp->occ) & king) {
+                pin_ray = BB::west_attacks(king, ~(bp->occ ^ r&-r));
+            } else if (BB::west_attacks(r&-r, ~bp->occ) & king) {
+                pin_ray = BB::east_attacks(king, ~(bp->occ ^ r&-r));
+            }
+        }
         int start = BB::bit_scan_forward(r);
         int piece = bp->rooks & r & -r ? CH::ROOK : CH::QUEEN;
         // East/West moves
@@ -377,7 +427,7 @@ void MoveGen::gen_rook_moves(Board::board_type* bp) {
         while (moves) {
             int end = BB::bit_scan_forward(moves);
             uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
-            int target = flag ? Board::piece_at(bp, end) : 0;
+            int target = flag ? bp->piece_at(end) : 0;
             search_moves_128x30[search_index] = Move::build_move(flag, start, end, piece, target);
             search_index++;
             moves &= moves - 1; // clear the LS1B
@@ -386,11 +436,12 @@ void MoveGen::gen_rook_moves(Board::board_type* bp) {
         // North/South moves
         moves = Compass::get_rank_attacks(rocc, rsq) & ~rcol;
         moves = BB::rotate_counterclockwise(moves);
+        moves &= pin_ray;
         moves &= check ? check_ray : ~0ull;
         while (moves) {
             uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
             int end = BB::bit_scan_forward(moves);
-            int target = flag ? Board::piece_at(bp, end) : 0;
+            int target = flag ? bp->piece_at(end) : 0;
             search_moves_128x30[search_index] = Move::build_move(flag, start, end, piece, target);
             search_index++;
             moves &= moves - 1; // clear the LS1B
@@ -407,7 +458,7 @@ void MoveGen::gen_king_moves(Board::board_type* bp) {
         uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
         int end = BB::bit_scan_forward(moves & -moves);
         search_moves_128x30[search_index] = Move::build_move(
-            flag, ksq, end, CH::KING, flag ? Board::piece_at(bp, end) : 0
+            flag, ksq, end, CH::KING, flag ? bp->piece_at(end) : 0
         );
         search_index++;
         moves &= moves - 1; // clear the LS1B
@@ -446,21 +497,21 @@ void MoveGen::sort_moves(int ply) {
 }
 
 Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
-    Board::board_type* newb = Board::copy(bp);
-    int flag  = mv       & 15;
-    int start = mv >>  4 & 63;
-    int end   = mv >> 10 & 63;
-    int piece = mv >> 16 &  7;
-    U64 sq0   = BB::sq_bb[start];
-    U64 sq1   = BB::sq_bb[end];
+    Board::board_type* newb = new Board::board_type(bp);
+    int flag   = mv       & 15;
+    int start  = mv >>  4 & 63;
+    int end    = mv >> 10 & 63;
+    int piece  = mv >> 16 &  7;
+    U64 st_bb  = BB::sq_bb[start];
+    U64 end_bb = BB::sq_bb[end];
     // moving piece:
-    *newb->bb_piece[piece]                                          ^= sq0;
-    *newb->bb_piece[flag&Move::Flag::PROMOTION ? (mv&7)+1 : piece]  ^= sq1;
-    *newb->bb_color[newb->black_to_move]                            ^= sq0 | sq1;
+    *newb->bb_piece[piece]                                         ^= st_bb;
+    *newb->bb_piece[flag&Move::Flag::PROMOTION ? (mv&7)+1 : piece] ^= end_bb;
+    *newb->bb_color[newb->black_to_move]                           ^= st_bb | end_bb;
     // captured piece:
     if (flag & Move::Flag::CAPTURE && flag != Move::Flag::EN_PASSANT) {
-        *newb->bb_piece[(mv>>22&7)-1]         ^= sq1;
-        *newb->bb_color[!newb->black_to_move] ^= sq1;
+        *newb->bb_piece[(mv>>22&7)-1]         ^= end_bb;
+        *newb->bb_color[!newb->black_to_move] ^= end_bb;
     }
     // castling kingside:
     *newb->bb_piece[CH::ROOK]            ^= flag == Move::Flag::CASTLE_KINGSIDE ? newb->black_to_move ? (BB::sq_bb[SQ::f8] | BB::sq_bb[SQ::h8]) : (BB::sq_bb[SQ::f1] | BB::sq_bb[SQ::h1]) : 0ull;
@@ -469,8 +520,8 @@ Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
     *newb->bb_piece[CH::ROOK]            ^= flag == Move::Flag::CASTLE_QUEENSIDE ? newb->black_to_move ? (BB::sq_bb[SQ::d8] | BB::sq_bb[SQ::a8]) : (BB::sq_bb[SQ::d1] | BB::sq_bb[SQ::a1]) : 0ull;
     *newb->bb_color[newb->black_to_move] ^= flag == Move::Flag::CASTLE_QUEENSIDE ? newb->black_to_move ? (BB::sq_bb[SQ::d8] | BB::sq_bb[SQ::a8]) : (BB::sq_bb[SQ::d1] | BB::sq_bb[SQ::a1]) : 0ull;
     // en passant:
-    *newb->bb_piece[CH::PAWN]             ^= flag == Move::Flag::EN_PASSANT ? BB::gen_shift(sq1, Dir::PAWN_DIR[!newb->black_to_move]) : 0ull;
-    *newb->bb_color[!newb->black_to_move] ^= flag == Move::Flag::EN_PASSANT ? BB::gen_shift(sq1, Dir::PAWN_DIR[!newb->black_to_move]) : 0ull;
+    *newb->bb_piece[CH::PAWN]             ^= flag == Move::Flag::EN_PASSANT ? BB::gen_shift(end_bb, Dir::PAWN_DIR[!newb->black_to_move]) : 0ull;
+    *newb->bb_color[!newb->black_to_move] ^= flag == Move::Flag::EN_PASSANT ? BB::gen_shift(end_bb, Dir::PAWN_DIR[!newb->black_to_move]) : 0ull;
     // store ep file
     newb->ep_file = flag == Move::Flag::PAWN_DOUBLE_ADVANCE ? start & 7 : 8;
     // occupancy bitboard
@@ -494,7 +545,7 @@ void MoveGen::perft_root(Board::board_type* bp, int d) {
         "62854969236701747", "1981066775000396239", "61885021521585529237",
         "2015099950053364471960"
     };
-    if (bp == nullptr || d < 0) return;
+    if (bp == nullptr || d < 0 || d > 30) return;
     U64 nodes = d == 0 ? 1 : 0;
     search_ply = 0;
     clear_array();
@@ -508,6 +559,7 @@ void MoveGen::perft_root(Board::board_type* bp, int d) {
         U64 diff = perft(newb, d - 1);
         std::cout << Move::name(mv) << ": " << diff << std::endl;
         nodes += diff;
+        delete newb;
     }
     search_ply--;
     std::cout << "perft " << std::setw(2) << std::to_string(d) << ": " << std::to_string(nodes) << std::endl;
@@ -532,8 +584,9 @@ U64 MoveGen::perft(Board::board_type* bp, int d) {
             // if (d < 2) std::cout << "  ";
             // std::cout << "  " << Move::name(mv) << " " << std::to_string(diff) << std::endl;
         // }
+        delete next;
     }
     search_ply--;
-    clear_array(128*search_ply);
+    clear_array(search_ply << 7);
     return count;
 }

@@ -29,7 +29,7 @@ int main (int args, char** argv) {
     Compass::compute_king_attacks();
 
     stack_node* top = new stack_node;
-    top->bp = Board::new_game();
+    top->bp = new Board::board_type();
     // Board::board_type* board = Board::new_game();
 
     // MoveGen::perft_root(top->bp, 2);
@@ -49,7 +49,7 @@ int main (int args, char** argv) {
         MoveGen::gen_moves(top->bp);
         MoveGen::sort_moves(MoveGen::search_ply);
 
-        Board::print_board(top->bp, CH::WHITE_INDEX);
+        top->bp->print_board(CH::WHITE_INDEX);
         for (int idx = 0; idx < MoveGen::search_index; idx++) {
             Move::move32 mv = MoveGen::search_moves_128x30[idx];
             std::cout << Move::name(mv) << " ";
@@ -60,9 +60,10 @@ int main (int args, char** argv) {
             std::cout << std::endl << "Check!";
         }
         std::cout << std::endl << "Choose a move: ";
-
         std::string instr;
         std::cin >> instr;
+        std::cout << std::endl;
+
         for (int idx = 0; idx < MoveGen::search_index; idx++) {
             Move::move32 mv = MoveGen::search_moves_128x30[idx];
             std::string mvstr = SQ::string_from_square[mv>>4&63] + SQ::string_from_square[mv>>10&63];
@@ -92,7 +93,7 @@ int main (int args, char** argv) {
             std::cout << MoveGen::check << std::endl;
             BB::print_binary_string(BB::build_binary_string(MoveGen::check_ray), "check_ray");
         } else if (instr == "bb") {
-            Board::print_bitboards(top->bp);
+            top->bp->print_bitboards();
         } else if (instr == "end" || instr == "stop" || instr == "quit") running = false;
     }
 

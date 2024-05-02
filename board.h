@@ -24,16 +24,16 @@ namespace Board {
         uint32_t fullmoves  = 1;
         U64* bb_piece[6] = { &pawns, &knights, &bishops, &rooks, &queens, &kings };
         U64* bb_color[2] = { &white, &black };
+        board_type();
+        board_type(board_type* bp);
+        board_type(std::string fen);
+        bool square_occupied(int sq);
+        bool color_at(int sq);
+        int piece_at(int sq);
+        int piece_bb(U64 bb);
+        void print_board(bool black_to_move = false);
+        void print_bitboards();
     };
-    board_type* new_game();
-    board_type* copy(board_type* bp);
-    board_type* build_fen(std::string fen);
-    bool square_occupied(board_type* bp, int sq);
-    bool color_at(board_type* bp, int sq);
-    int piece_at(board_type* bp, int sq);
-    int piece_bb(board_type* bp, U64 bb);
-    void print_board(board_type* bp, bool black_to_move = false);
-    void print_bitboards(board_type* bp);
 
     const std::string START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 }; // namespace Board
