@@ -84,9 +84,13 @@ int main (int args, char** argv) {
                 std::cin >> perft_depth;
             }
             MoveGen::perft_root(top->bp, perft_depth);
+        } else if (instr == "pins") {
+            BB::print_binary_string(BB::build_binary_string(MoveGen::pins), "pins");
         } else if (instr == "mask") {
-            MoveGen::gen_op_attack_mask(top->bp);
             BB::print_binary_string(BB::build_binary_string(MoveGen::op_atk), "op_atk");
+        } else if (instr == "check") {
+            std::cout << MoveGen::check << std::endl;
+            BB::print_binary_string(BB::build_binary_string(MoveGen::check_ray), "check_ray");
         } else if (instr == "bb") {
             Board::print_bitboards(top->bp);
         } else if (instr == "end" || instr == "stop" || instr == "quit") running = false;

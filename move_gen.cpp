@@ -107,9 +107,11 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     check = false;
     double_check = false;
     U64 king = bp->kings & *bp->bb_color[bp->black_to_move];
+    BB::print_binary_string(BB::build_binary_string(op_atk), "op_atk");
 
     if (!(king & op_atk)) // check only exists if king is attacked
         return;
+    std::cout << "AAA!!!" << std::endl;
 
     int ksq = BB::bit_scan_forward(king);
     U64 op  = *bp->bb_color[!bp->black_to_move];
@@ -124,44 +126,48 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     attackers     &= op & bp->pawns;
     check_ray      = check_ray ? check_ray : attackers;
     check = check || attackers;
+    BB::print_binary_string(BB::build_binary_string(check_ray), "check_ray");
 
     // bishops, queens
-    attackers  = BB::NoEa_attacks(king, ~bp->occ);
-    attackers |= BB::NoWe_attacks(king, ~bp->occ);
-    attackers |= BB::SoEa_attacks(king, ~bp->occ);
-    attackers |= BB::SoWe_attacks(king, ~bp->occ);
-    attackers &= op & (bp->queens | bp->bishops);
+    U64 op_bq     = op & (bp->queens | bp->bishops);
+    attackers     = BB::NoEa_attacks(king, ~bp->occ);
+    attackers    |= BB::NoWe_attacks(king, ~bp->occ);
+    attackers    |= BB::SoEa_attacks(king, ~bp->occ);
+    attackers    |= BB::SoWe_attacks(king, ~bp->occ);
+    attackers    &= op_bq;
+    double_check  = check && attackers;
+    check         = check || attackers;
     if (attackers && !check_ray) {
         attackers = BB::NoEa_attacks(king, ~bp->occ);
-        check_ray = attackers & op & (bp->queens | bp->bishops) ? attackers : check_ray;
+        BB::print_binary_string(BB::build_binary_string(attackers), "attackers");
+        check_ray = attackers & op_bq ? attackers : check_ray;
         attackers = BB::NoWe_attacks(king, ~bp->occ);
-        check_ray = attackers & op & (bp->queens | bp->bishops) ? attackers : check_ray;
+        check_ray = attackers & op_bq ? attackers : check_ray;
         attackers = BB::SoEa_attacks(king, ~bp->occ);
-        check_ray = attackers & op & (bp->queens | bp->bishops) ? attackers : check_ray;
+        check_ray = attackers & op_bq ? attackers : check_ray;
         attackers = BB::SoWe_attacks(king, ~bp->occ);
-        check_ray = attackers & op & (bp->queens | bp->bishops) ? attackers : check_ray;
+        check_ray = attackers & op_bq ? attackers : check_ray;
     }
-    double_check = check && attackers;
-    check        = check || attackers;
 
     // rooks, queens
-    attackers  = BB::nort_attacks(king, ~bp->occ);
-    attackers |= BB::sout_attacks(king, ~bp->occ);
-    attackers |= BB::east_attacks(king, ~bp->occ);
-    attackers |= BB::west_attacks(king, ~bp->occ);
-    attackers &= op & (bp->queens | bp->rooks);
+    U64 op_rq     = op & (bp->queens | bp->rooks);
+    attackers     = BB::nort_attacks(king, ~bp->occ);
+    attackers    |= BB::sout_attacks(king, ~bp->occ);
+    attackers    |= BB::east_attacks(king, ~bp->occ);
+    attackers    |= BB::west_attacks(king, ~bp->occ);
+    attackers    &= op_rq;
+    double_check  = check && attackers;
+    check         = check || attackers;
     if (attackers && !check_ray) {
         attackers = BB::nort_attacks(king, ~bp->occ);
-        check_ray = attackers & op & (bp->queens | bp->rooks) ? attackers : check_ray;
+        check_ray = attackers & op_rq ? attackers : check_ray;
         attackers = BB::sout_attacks(king, ~bp->occ);
-        check_ray = attackers & op & (bp->queens | bp->rooks) ? attackers : check_ray;
+        check_ray = attackers & op_rq ? attackers : check_ray;
         attackers = BB::east_attacks(king, ~bp->occ);
-        check_ray = attackers & op & (bp->queens | bp->rooks) ? attackers : check_ray;
+        check_ray = attackers & op_rq ? attackers : check_ray;
         attackers = BB::west_attacks(king, ~bp->occ);
-        check_ray = attackers & op & (bp->queens | bp->rooks) ? attackers : check_ray;
+        check_ray = attackers & op_rq ? attackers : check_ray;
     }
-    double_check = check && attackers;
-    check        = check || attackers;
 }
 
 void MoveGen::gen_moves(Board::board_type* bp) {
@@ -181,8 +187,10 @@ void MoveGen::gen_moves(Board::board_type* bp) {
 
 // pawn moves, captures, promotions, and en passant
 void MoveGen::gen_pawn_moves(Board::board_type* bp) {
-    // pawn single and double advances
     U64 pawns = bp->pawns & *bp->bb_color[bp->black_to_move];
+    U64 king  = bp->kings & *bp->bb_color[bp->black_to_move];
+
+    // pawn single and double advances
     U64 moves = BB::gen_shift(pawns, Dir::PAWN_DIR[bp->black_to_move]) & ~bp->occ;
     U64 doubles = BB::gen_shift(moves & (bp->black_to_move ? BB::ROW_6 : BB::ROW_3), Dir::PAWN_DIR[bp->black_to_move]) & ~bp->occ;
     U64 promotions = moves & (BB::ROW_1 | BB::ROW_8);
@@ -190,6 +198,7 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     moves      &= check ? check_ray : ~0ull;
     doubles    &= check ? check_ray : ~0ull;
     promotions &= check ? check_ray : ~0ull;
+
     // serialize the doubles bitboard:
     while (doubles) {
         int endsq = BB::bit_scan_forward(doubles);
@@ -204,6 +213,7 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
         search_index++;
         doubles &= doubles - 1; // clear the LS1B
     }
+
     // serialize the moves bitboard:
     while (moves) {
         int endsq = BB::bit_scan_forward(moves);
@@ -218,6 +228,7 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
         search_index++;
         moves &= moves - 1; // clear the LS1B
     }
+
     // serialize the promotions bitboard:
     while (promotions) {
         int endsq = BB::bit_scan_forward(promotions);
@@ -235,10 +246,15 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
         search_index += 4;
         promotions &= promotions - 1; // clear the LS1B
     }
+
     // is there an ep capture available?
     U64 epsq = bp->ep_file < 8 ? (BB::A_FILE << bp->ep_file & (bp->black_to_move ? BB::ROW_3 : BB::ROW_6)) : 0ull;
     // is the ep pawn delivering check?
     U64 ep_ray = check_ray & BB::gen_shift(epsq, Dir::PAWN_DIR[!bp->black_to_move]) & bp->pawns & *bp->bb_color[!bp->black_to_move];
+    if (ep_ray) {
+        std::cout << "!!! ep_ray !!!" << std::endl;
+    }
+
     // pawn captures east
     moves = BB::gen_shift(pawns & BB::NOT_H_FILE, Dir::DIRS[4+2*bp->black_to_move]) & (*bp->bb_color[!bp->black_to_move] | epsq);
     promotions = moves & (BB::ROW_1 | BB::ROW_8);
@@ -249,7 +265,14 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
         int endsq = BB::bit_scan_forward(moves);
         int start = endsq - Dir::DIRS[4+2*bp->black_to_move];
         uint8_t flag = epsq & moves & -moves ? Move::Flag::EN_PASSANT : Move::Flag::CAPTURE;
-        // check for pins
+        if ((pins & BB::sq_bb[start]) && !(BB::A_FILE << (start&7) & bp->kings & *bp->bb_color[bp->black_to_move])) {
+        if (pins & BB::sq_bb[start]) {
+            if (!bp->black_to_move && BB::SoWe_attacks(BB::sq_bb[start], ~king)) {
+                
+            } else if (bp->black_to_move && BB::NoWe_attacks(BB::sq_bb[start], ~king)) {
+                
+            }
+        }
         int target = flag == Move::Flag::EN_PASSANT ? CH::PAWN : Board::piece_at(bp, endsq);
         search_moves_128x30[search_index] = Move::build_move(flag, start, endsq, CH::PAWN, target);
         search_index++;
@@ -266,6 +289,7 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
         search_index += 4;
         promotions &= promotions - 1; // clear the LS1B
     }
+
     // pawn captures west
     moves = BB::gen_shift(pawns & BB::NOT_A_FILE, Dir::DIRS[5+2*bp->black_to_move]) & (*bp->bb_color[!bp->black_to_move] | epsq);
     promotions = moves & (BB::ROW_1 | BB::ROW_8);
@@ -482,7 +506,7 @@ void MoveGen::perft_root(Board::board_type* bp, int d) {
         // if (d > 1) std::cout << Move::name(mv) << ":" << std::endl;
         Board::board_type* newb = make_move(bp, mv);
         U64 diff = perft(newb, d - 1);
-        std::cout << Move::name(mv) << " " << diff << std::endl;
+        std::cout << Move::name(mv) << ": " << diff << std::endl;
         nodes += diff;
     }
     search_ply--;

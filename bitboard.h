@@ -37,7 +37,7 @@ namespace BB {
     extern U64 sq_bb[64];
     // Functions:
     void init_sq_bb();
-    unsigned int bit_scan_forward (U64 bb);
+    unsigned int bit_scan_forward(U64 bb);
     U64 nort_shift_one(U64 bb);
     U64 sout_shift_one(U64 bb);
     U64 east_shift_one(U64 bb);
