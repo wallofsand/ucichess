@@ -135,8 +135,8 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     check     = check_ray;
 
     // pawns
-    U64 attackers  = BB::gen_shift(king & BB::NOT_H_FILE, Dir::PAWN_DIR[!bp->black_to_move] + 1);
-    attackers     |= BB::gen_shift(king & BB::NOT_A_FILE, Dir::PAWN_DIR[!bp->black_to_move] - 1);
+    U64 attackers  = BB::gen_shift(king & BB::NOT_H_FILE, Dir::PAWN_DIR[bp->black_to_move] + 1);
+    attackers     |= BB::gen_shift(king & BB::NOT_A_FILE, Dir::PAWN_DIR[bp->black_to_move] - 1);
     attackers     &= op & bp->pawns;
     check_ray      = check_ray ? check_ray : attackers;
     check = check || attackers;
@@ -423,6 +423,7 @@ void MoveGen::gen_rook_moves(Board::board_type* bp) {
         int piece = bp->rooks & r & -r ? CH::ROOK : CH::QUEEN;
         // East/West moves
         U64 moves = Compass::get_rank_attacks(bp->occ, start) & ~*bp->bb_color[bp->black_to_move];
+        moves &= pin_ray;
         moves &= check ? check_ray : ~0ull;
         while (moves) {
             int end = BB::bit_scan_forward(moves);
@@ -432,15 +433,15 @@ void MoveGen::gen_rook_moves(Board::board_type* bp) {
             search_index++;
             moves &= moves - 1; // clear the LS1B
         }
-        int rsq = (((start >> 3) | (start << 3)) & 63) ^ 56;
         // North/South moves
-        moves = Compass::get_rank_attacks(rocc, rsq) & ~rcol;
+        int rstart = (((start >> 3) | (start << 3)) & 63) ^ 56;
+        moves = Compass::get_rank_attacks(rocc, rstart) & ~rcol;
         moves = BB::rotate_counterclockwise(moves);
         moves &= pin_ray;
         moves &= check ? check_ray : ~0ull;
         while (moves) {
-            uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
             int end = BB::bit_scan_forward(moves);
+            uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
             int target = flag ? bp->piece_at(end) : 0;
             search_moves_128x30[search_index] = Move::build_move(flag, start, end, piece, target);
             search_index++;
@@ -466,14 +467,14 @@ void MoveGen::gen_king_moves(Board::board_type* bp) {
     uint8_t qk = bp->castle_qkQK >> 2 * bp->black_to_move;
     const U64 KS_MASK = bp->black_to_move ? 112ull << 56 : 112; // 0b111 << 4 = 112
     const U64 QS_MASK = bp->black_to_move ? 28ull  << 56 : 28;  // 0b111 << 2 = 28 << 56
-    search_moves_128x30[search_index] = qk&1 && (KS_MASK & (check_ray | bp->occ)) == 0 ? Move::build_move(
+    search_moves_128x30[search_index] = qk&1 && (KS_MASK & (check_ray | bp->occ ^ k)) == 0 ? Move::build_move(
         Move::Flag::CASTLE_KINGSIDE, ksq, ksq+2, CH::KING, 0
     ) : 0;
-    search_index += qk&1 && (KS_MASK & (check_ray | bp->occ)) == 0;
-    search_moves_128x30[search_index] = qk&2 && (QS_MASK & (check_ray | bp->occ)) == 0 ? Move::build_move(
+    search_index += qk&1 && (KS_MASK & (check_ray | bp->occ ^ k)) == 0;
+    search_moves_128x30[search_index] = qk&2 && (QS_MASK & (check_ray | bp->occ ^ k)) == 0 ? Move::build_move(
         Move::Flag::CASTLE_QUEENSIDE, ksq, ksq-2, CH::KING, 0
     ) : 0;
-    search_index += qk&2 && (QS_MASK & (check_ray | bp->occ)) == 0;
+    search_index += qk&2 && (QS_MASK & (check_ray | bp->occ ^ k)) == 0;
 }
 
 // sort the 128 moves stored in the move array at index ply*128
@@ -530,6 +531,14 @@ Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
     newb->halfmoves = piece == CH::PAWN || (flag & Move::Flag::CAPTURE) ? 0 : newb->halfmoves + 1;
     // if black's move increment fullmoves
     newb->fullmoves += newb->black_to_move;
+    // update castle rights
+    if (piece == CH::KING || (piece == CH::ROOK && start == (newb->black_to_move ? SQ::h8 : SQ::h1))) {
+        // KS castle rights update
+        newb->castle_qkQK = newb->castle_qkQK & ~(1 << newb->black_to_move);
+    } else if (piece == CH::KING || (piece == CH::ROOK && start == (newb->black_to_move ? SQ::a8 : SQ::a1))) {
+        // QS castle rights update
+        newb->castle_qkQK = newb->castle_qkQK & ~(2 << newb->black_to_move);
+    }
     // turn player
     newb->black_to_move = !newb->black_to_move;
     return newb;

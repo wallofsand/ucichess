@@ -62,7 +62,6 @@ int main (int args, char** argv) {
         std::cout << std::endl << "Choose a move: ";
         std::string instr;
         std::cin >> instr;
-        std::cout << std::endl;
 
         for (int idx = 0; idx < MoveGen::search_index; idx++) {
             Move::move32 mv = MoveGen::search_moves_128x30[idx];
@@ -85,6 +84,12 @@ int main (int args, char** argv) {
                 std::cin >> perft_depth;
             }
             MoveGen::perft_root(top->bp, perft_depth);
+        } else if (instr == "castle") {
+            std::cout << (top->bp->castle_qkQK & 8 ? "1" : "0")
+                      << (top->bp->castle_qkQK & 4 ? "1" : "0")
+                      << (top->bp->castle_qkQK & 2 ? "1" : "0")
+                      << (top->bp->castle_qkQK & 1 ? "1" : "0")
+                      << std::endl;
         } else if (instr == "pins") {
             BB::print_binary_string(BB::build_binary_string(MoveGen::pins), "pins");
         } else if (instr == "mask") {
@@ -96,6 +101,5 @@ int main (int args, char** argv) {
             top->bp->print_bitboards();
         } else if (instr == "end" || instr == "stop" || instr == "quit") running = false;
     }
-
     return 0;
 }
