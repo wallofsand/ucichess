@@ -63,6 +63,7 @@ int main (int args, char** argv) {
         std::string instr;
         std::cin >> instr;
 
+        // Move input
         for (int idx = 0; idx < MoveGen::search_index; idx++) {
             Move::move32 mv = MoveGen::search_moves_128x30[idx];
             std::string mvstr = SQ::string_from_square[mv>>4&63] + SQ::string_from_square[mv>>10&63];
@@ -73,11 +74,19 @@ int main (int args, char** argv) {
                 top = next;
             }
         }
+
+        // Other inputs
         if (instr == "undo" && top->prev) {
             stack_node* tmp = top;
             top = top->prev;
             tmp->prev = nullptr;
             delete tmp;
+        } else if (instr == "0000") {
+            stack_node* next = new stack_node;
+            next->bp = new Board::board_type(top->bp);
+            next->prev = top;
+            top = next;
+            top->bp->black_to_move = ~top->bp->black_to_move;
         } else if (instr == "perft") {
             perft_depth = -1;
             while (perft_depth < 0) {

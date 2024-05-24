@@ -22,11 +22,13 @@ namespace Board {
         bool black_to_move  = false;
         uint32_t halfmoves  = 0;
         uint32_t fullmoves  = 1;
-        U64* bb_piece[6] = { &pawns, &knights, &bishops, &rooks, &queens, &kings };
-        U64* bb_color[2] = { &white, &black };
+        U64* bb_piece[6]    = { &pawns, &knights, &bishops, &rooks, &queens, &kings };
+        U64* bb_color[2]    = { &white, &black };
+
         board_type();
         board_type(board_type* bp);
         board_type(std::string fen);
+
         bool square_occupied(int sq);
         bool color_at(int sq);
         int piece_at(int sq);

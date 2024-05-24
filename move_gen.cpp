@@ -2,6 +2,7 @@
 #include <iomanip>
 #include "move_gen.h"
 #include "compass.h"
+#include "timer.h"
 
 
 Move::move32 MoveGen::search_moves_128x30[128*30] {};
@@ -455,6 +456,7 @@ void MoveGen::gen_king_moves(Board::board_type* bp) {
     U64 k = bp->kings & *bp->bb_color[bp->black_to_move];
     int ksq = BB::bit_scan_forward(k & -k);
     U64 moves = Compass::king_attacks[ksq] & ~op_atk & ~*bp->bb_color[bp->black_to_move];
+    // normal moves/captures:
     while (moves) {
         uint8_t flag = moves & -moves & bp->occ ? Move::Flag::CAPTURE : 0;
         int end = BB::bit_scan_forward(moves & -moves);
@@ -464,26 +466,32 @@ void MoveGen::gen_king_moves(Board::board_type* bp) {
         search_index++;
         moves &= moves - 1; // clear the LS1B
     }
-    uint8_t qk = bp->castle_qkQK >> 2 * bp->black_to_move;
-    const U64 KS_MASK = bp->black_to_move ? 112ull << 56 : 112; // 0b111 << 4 = 112
-    const U64 QS_MASK = bp->black_to_move ? 28ull  << 56 : 28;  // 0b111 << 2 = 28 << 56
-    search_moves_128x30[search_index] = qk&1 && (KS_MASK & (check_ray | bp->occ ^ k)) == 0 ? Move::build_move(
+    if (check) return; // no castling under check
+    // castling:
+    uint8_t qk = (bp->castle_qkQK >> 2 * bp->black_to_move) & 3;
+    const U64 KS_CHECK = bp->black_to_move ? 96ull << 56 : 96; // 0b11 << 5 = 96
+    const U64 QS_CHECK = bp->black_to_move ? 12ull << 56 : 12; // 0b11 << 2 = 12
+    const U64 QS_OCC   = bp->black_to_move ? 2ull  << 56 : 2 ;
+    // BB::print_binary_string(BB::build_binary_string(KS_CHECK), "KS_CHECK");
+    // BB::print_binary_string(BB::build_binary_string(QS_CHECK), "QS_CHECK");
+    // BB::print_binary_string(BB::build_binary_string(QS_OCC), "QS_OCC");
+    search_moves_128x30[search_index] = qk&1 && !(KS_CHECK & (op_atk | bp->occ)) ? Move::build_move(
         Move::Flag::CASTLE_KINGSIDE, ksq, ksq+2, CH::KING, 0
     ) : 0;
-    search_index += qk&1 && (KS_MASK & (check_ray | bp->occ ^ k)) == 0;
-    search_moves_128x30[search_index] = qk&2 && (QS_MASK & (check_ray | bp->occ ^ k)) == 0 ? Move::build_move(
-        Move::Flag::CASTLE_QUEENSIDE, ksq, ksq-2, CH::KING, 0
+    search_index += qk&1 && !(KS_CHECK & (op_atk | bp->occ ^ k));
+    search_moves_128x30[search_index] = qk&2 && !(QS_CHECK & (op_atk | bp->occ)) && !(QS_OCC & bp->occ) ? Move::build_move(
+        Move::Flag::CASTLE_QUEENSIDE, ksq, ksq-2, CH::KING , 0
     ) : 0;
-    search_index += qk&2 && (QS_MASK & (check_ray | bp->occ ^ k)) == 0;
+    search_index += qk&2 && !(QS_CHECK & (op_atk | bp->occ ^ k)) && !(QS_OCC & bp->occ);
 }
 
 // sort the 128 moves stored in the move array at index ply*128
 // ply is some nonnegative value 0-29 inclusive
 void MoveGen::sort_moves(int ply) {
     Move::move32 temp = 0;
-    int start = ply<<7;
+    int start = ply << 7;
     int i = 1 + start;
-    int end = ply+1<<7;
+    const int end = ply+1 << 7;
     while (i < end && search_moves_128x30[i]) {
         Move::move32 temp = search_moves_128x30[i];
         int j = i;
@@ -503,15 +511,20 @@ Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
     int start  = mv >>  4 & 63;
     int end    = mv >> 10 & 63;
     int piece  = mv >> 16 &  7;
+    int target = (mv >> 22 & 7) - 1;
     U64 st_bb  = BB::sq_bb[start];
     U64 end_bb = BB::sq_bb[end];
+    // target debug test:
+    // if (target > 0) {
+    //     std::cout << "Capture detected: " << CH::piece_char[target] << std::endl;
+    // }
     // moving piece:
     *newb->bb_piece[piece]                                         ^= st_bb;
     *newb->bb_piece[flag&Move::Flag::PROMOTION ? (mv&7)+1 : piece] ^= end_bb;
     *newb->bb_color[newb->black_to_move]                           ^= st_bb | end_bb;
     // captured piece:
     if (flag & Move::Flag::CAPTURE && flag != Move::Flag::EN_PASSANT) {
-        *newb->bb_piece[(mv>>22&7)-1]         ^= end_bb;
+        *newb->bb_piece[target]               ^= end_bb;
         *newb->bb_color[!newb->black_to_move] ^= end_bb;
     }
     // castling kingside:
@@ -531,14 +544,38 @@ Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
     newb->halfmoves = piece == CH::PAWN || (flag & Move::Flag::CAPTURE) ? 0 : newb->halfmoves + 1;
     // if black's move increment fullmoves
     newb->fullmoves += newb->black_to_move;
-    // update castle rights
-    if (piece == CH::KING || (piece == CH::ROOK && start == (newb->black_to_move ? SQ::h8 : SQ::h1))) {
-        // KS castle rights update
-        newb->castle_qkQK = newb->castle_qkQK & ~(1 << newb->black_to_move);
-    } else if (piece == CH::KING || (piece == CH::ROOK && start == (newb->black_to_move ? SQ::a8 : SQ::a1))) {
-        // QS castle rights update
-        newb->castle_qkQK = newb->castle_qkQK & ~(2 << newb->black_to_move);
-    }
+    // update castle rights on king/rook moves
+    // Kingside castle rights update
+    newb->castle_qkQK = piece == CH::KING || (piece == CH::ROOK && start == (newb->black_to_move ? SQ::h8 : SQ::h1)) ?
+                        newb->castle_qkQK & ~(newb->black_to_move ? 4 : 1) : newb->castle_qkQK;
+    // Queenside castle rights update
+    newb->castle_qkQK = piece == CH::KING || (piece == CH::ROOK && start == (newb->black_to_move ? SQ::a8 : SQ::a1)) ?
+                        newb->castle_qkQK & ~(newb->black_to_move ? 8 : 2) : newb->castle_qkQK;
+    // if (piece == CH::KING ||
+    //    (piece == CH::ROOK && start == newb->black_to_move ? SQ::h8 : SQ::h1)) {
+    //     // KS castle rights update
+    //     newb->castle_qkQK = newb->castle_qkQK & ~(newb->black_to_move ? 4 : 1);
+    // } else if (piece == CH::KING ||
+    //           (piece == CH::ROOK && start == newb->black_to_move ? SQ::a8 : SQ::a1)) {
+    //     // QS castle rights update
+    //     newb->castle_qkQK = newb->castle_qkQK & ~(newb->black_to_move ? 8 : 2);
+    // }
+    // update castle rights on rook captures
+    // Kingside rook captured
+    newb->castle_qkQK = flag & Move::Flag::CAPTURE && target == CH::ROOK && end == (newb->black_to_move ? SQ::a1 : SQ::a8) ?
+                        newb->castle_qkQK & ~(newb->black_to_move ? 1 : 4) : newb->castle_qkQK;
+    // Queenside rook captured
+    newb->castle_qkQK = flag & Move::Flag::CAPTURE && target == CH::ROOK && end == (newb->black_to_move ? SQ::h1 : SQ::h8) ?
+                        newb->castle_qkQK & ~(newb->black_to_move ? 2 : 8) : newb->castle_qkQK;
+    // if (target == CH::ROOK) {
+    //     if (end == (newb->black_to_move ? SQ::a1 : SQ::a8)) {
+    //         // KS rook captured
+    //         newb->castle_qkQK = newb->castle_qkQK & ~(newb->black_to_move ? 1 : 4);
+    //     } else if (end == (newb->black_to_move ? SQ::h1 : SQ::h8)) {
+    //         // QS rook captured
+    //         newb->castle_qkQK = newb->castle_qkQK & ~(newb->black_to_move ? 2 : 8);
+    //     }
+    // }
     // turn player
     newb->black_to_move = !newb->black_to_move;
     return newb;
@@ -554,7 +591,9 @@ void MoveGen::perft_root(Board::board_type* bp, int d) {
         "62854969236701747", "1981066775000396239", "61885021521585529237",
         "2015099950053364471960"
     };
-    if (bp == nullptr || d < 0 || d > 30) return;
+    if (d < 0 || d > 30) return;
+
+    Timer t;
     U64 nodes = d == 0 ? 1 : 0;
     search_ply = 0;
     clear_array();
@@ -563,15 +602,16 @@ void MoveGen::perft_root(Board::board_type* bp, int d) {
     search_ply++;
     for (int idx = 0; d && idx < 128 && search_moves_128x30[idx]; idx++) {
         Move::move32 mv = search_moves_128x30[idx];
-        // if (d > 1) std::cout << Move::name(mv) << ":" << std::endl;
         Board::board_type* newb = make_move(bp, mv);
+        std::cout << Move::name(mv) << ": ";
         U64 diff = perft(newb, d - 1);
-        std::cout << Move::name(mv) << ": " << diff << std::endl;
         nodes += diff;
+        std::cout << diff << std::endl;
         delete newb;
     }
     search_ply--;
     std::cout << "perft " << std::setw(2) << std::to_string(d) << ": " << std::to_string(nodes) << std::endl;
+    std::cout << "test completed in: " << t.elapsed() << " seconds." << std::endl;
     if (bp->occ != 0xffff00000000ffffull) return;
     std::cout << "expected: " << (d<16 ? PERFT_RESULTS[d] : "?????") << std::endl;
 }
@@ -588,11 +628,6 @@ U64 MoveGen::perft(Board::board_type* bp, int d) {
         Board::board_type* next = make_move(bp, MoveGen::search_moves_128x30[idx+(search_ply-1<<7)]);
         U64 diff = perft(next, d-1);
         count += diff;
-
-        // if (d > 0) {
-            // if (d < 2) std::cout << "  ";
-            // std::cout << "  " << Move::name(mv) << " " << std::to_string(diff) << std::endl;
-        // }
         delete next;
     }
     search_ply--;
