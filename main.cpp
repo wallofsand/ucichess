@@ -55,10 +55,6 @@ int main (int args, char** argv) {
             std::cout << Move::name(mv) << " ";
             if (idx != MoveGen::search_index-1 && idx % 5 == 4) std::cout << std::endl;
         }
-        if (MoveGen::check) {
-            BB::print_binary_string(BB::build_binary_string(MoveGen::check_ray), "check_ray");
-            std::cout << std::endl << "Check!";
-        }
         std::cout << std::endl << "Choose a move: ";
         std::string instr;
         std::cin >> instr;
@@ -104,7 +100,8 @@ int main (int args, char** argv) {
         } else if (instr == "mask") {
             BB::print_binary_string(BB::build_binary_string(MoveGen::op_atk), "op_atk");
         } else if (instr == "check") {
-            std::cout << MoveGen::check << std::endl;
+            std::cout << "check:        " << MoveGen::check        << std::endl;
+            std::cout << "double_check: " << MoveGen::double_check << std::endl;
             BB::print_binary_string(BB::build_binary_string(MoveGen::check_ray), "check_ray");
         } else if (instr == "bb") {
             top->bp->print_bitboards();

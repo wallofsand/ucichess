@@ -151,6 +151,7 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     attackers    &= op_bq;
     double_check  = check && attackers;
     check         = check || attackers;
+    // if this is the first check, record the attacking ray
     if (attackers && !check_ray) {
         attackers = BB::NoEa_attacks(king, ~bp->occ);
         check_ray = attackers & op_bq ? attackers : check_ray;
@@ -169,8 +170,10 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     attackers    |= BB::east_attacks(king, ~bp->occ);
     attackers    |= BB::west_attacks(king, ~bp->occ);
     attackers    &= op_rq;
-    double_check  = check && attackers;
+
+    double_check  = double_check || (check && attackers);
     check         = check || attackers;
+    // if this is the first check, record the attacking ray
     if (attackers && !check_ray) {
         attackers = BB::nort_attacks(king, ~bp->occ);
         check_ray = attackers & op_rq ? attackers : check_ray;
@@ -527,6 +530,7 @@ Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
         *newb->bb_piece[target]               ^= end_bb;
         *newb->bb_color[!newb->black_to_move] ^= end_bb;
     }
+
     // castling kingside:
     *newb->bb_piece[CH::ROOK]            ^= flag == Move::Flag::CASTLE_KINGSIDE ? newb->black_to_move ? (BB::sq_bb[SQ::f8] | BB::sq_bb[SQ::h8]) : (BB::sq_bb[SQ::f1] | BB::sq_bb[SQ::h1]) : 0ull;
     *newb->bb_color[newb->black_to_move] ^= flag == Move::Flag::CASTLE_KINGSIDE ? newb->black_to_move ? (BB::sq_bb[SQ::f8] | BB::sq_bb[SQ::h8]) : (BB::sq_bb[SQ::f1] | BB::sq_bb[SQ::h1]) : 0ull;
@@ -544,6 +548,7 @@ Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
     newb->halfmoves = piece == CH::PAWN || (flag & Move::Flag::CAPTURE) ? 0 : newb->halfmoves + 1;
     // if black's move increment fullmoves
     newb->fullmoves += newb->black_to_move;
+
     // update castle rights on king/rook moves
     // Kingside castle rights update
     newb->castle_qkQK = piece == CH::KING || (piece == CH::ROOK && start == (newb->black_to_move ? SQ::h8 : SQ::h1)) ?
@@ -551,31 +556,16 @@ Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
     // Queenside castle rights update
     newb->castle_qkQK = piece == CH::KING || (piece == CH::ROOK && start == (newb->black_to_move ? SQ::a8 : SQ::a1)) ?
                         newb->castle_qkQK & ~(newb->black_to_move ? 8 : 2) : newb->castle_qkQK;
-    // if (piece == CH::KING ||
-    //    (piece == CH::ROOK && start == newb->black_to_move ? SQ::h8 : SQ::h1)) {
-    //     // KS castle rights update
-    //     newb->castle_qkQK = newb->castle_qkQK & ~(newb->black_to_move ? 4 : 1);
-    // } else if (piece == CH::KING ||
-    //           (piece == CH::ROOK && start == newb->black_to_move ? SQ::a8 : SQ::a1)) {
-    //     // QS castle rights update
-    //     newb->castle_qkQK = newb->castle_qkQK & ~(newb->black_to_move ? 8 : 2);
-    // }
+
     // update castle rights on rook captures
+    const SQ::square_type KS_RSQ[2] = { SQ::h1, SQ::h8 };
+    const SQ::square_type QS_RSQ[2] = { SQ::a1, SQ::a8 };
     // Kingside rook captured
-    newb->castle_qkQK = flag & Move::Flag::CAPTURE && target == CH::ROOK && end == (newb->black_to_move ? SQ::a1 : SQ::a8) ?
+    newb->castle_qkQK = (flag & Move::Flag::CAPTURE && target == CH::ROOK && end == KS_RSQ[!newb->black_to_move]) ?
                         newb->castle_qkQK & ~(newb->black_to_move ? 1 : 4) : newb->castle_qkQK;
     // Queenside rook captured
-    newb->castle_qkQK = flag & Move::Flag::CAPTURE && target == CH::ROOK && end == (newb->black_to_move ? SQ::h1 : SQ::h8) ?
+    newb->castle_qkQK = (flag & Move::Flag::CAPTURE && target == CH::ROOK && end == QS_RSQ[!newb->black_to_move]) ?
                         newb->castle_qkQK & ~(newb->black_to_move ? 2 : 8) : newb->castle_qkQK;
-    // if (target == CH::ROOK) {
-    //     if (end == (newb->black_to_move ? SQ::a1 : SQ::a8)) {
-    //         // KS rook captured
-    //         newb->castle_qkQK = newb->castle_qkQK & ~(newb->black_to_move ? 1 : 4);
-    //     } else if (end == (newb->black_to_move ? SQ::h1 : SQ::h8)) {
-    //         // QS rook captured
-    //         newb->castle_qkQK = newb->castle_qkQK & ~(newb->black_to_move ? 2 : 8);
-    //     }
-    // }
     // turn player
     newb->black_to_move = !newb->black_to_move;
     return newb;
