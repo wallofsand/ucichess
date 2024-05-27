@@ -140,21 +140,27 @@ int Board::board_type::piece_bb(U64 bb) {
 }
 
 void Board::board_type::print_board(bool black_to_move) {
+    const std::string bar  = "   +---+---+---+---+---+---+---+---+";
+    const std::string rows = "     a   b   c   d   e   f   g   h  ";
+    std::cout << rows << std::endl;
+    std::cout << bar << std::endl;
     for (int rank = 0; rank < 8; rank++) {
-        std::cout << " ";
+        std::cout << " " << (black_to_move ? rank+1 : 8-rank) << " | ";
         for (int file = 0; file < 8; file++) {
             int sq = black_to_move ? 8*rank + file
                     : 8*(7-rank) + file;
             int piece = piece_at(sq);
             if (piece == -1) {
-                std::cout << ". ";
+                std::cout << (sq % 2 ? "  | " : ". | ");
             } else {
                 int color = color_at(sq);
-                std::cout << CH::piece_char[6*color+piece] << " ";
+                std::cout << CH::piece_char[6*color+piece] << " | ";
             }
         }
-        std::cout << std::endl;
+        std::cout << (black_to_move ? rank+1 : 8-rank) << std::endl;
+        std::cout << bar << std::endl;
     }
+    std::cout << rows << std::endl;
 }
 
 void Board::board_type::print_bitboards() {

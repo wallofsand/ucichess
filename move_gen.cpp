@@ -615,7 +615,7 @@ U64 MoveGen::perft(Board::board_type* bp, int d) {
     search_ply++;
     U64 count = 0;
     for (int idx = 0; idx < 128 && search_moves_128x30[idx+(search_ply-1<<7)]; idx++) {
-        Board::board_type* next = make_move(bp, MoveGen::search_moves_128x30[idx+(search_ply-1<<7)]);
+        Board::board_type* next = make_move(bp, search_moves_128x30[idx+(search_ply-1<<7)]);
         U64 diff = perft(next, d-1);
         count += diff;
         delete next;

@@ -10,6 +10,7 @@
 #include "piece_location_tables.h"
 #include "square.h"
 #include "move_gen.h"
+#include "search.h"
 
 struct stack_node {
     Board::board_type* bp = nullptr;
@@ -44,12 +45,14 @@ int main (int args, char** argv) {
     bool running = true;
     while (running) {
         int perft_depth;
+        int search_depth;
         MoveGen::clear_array();
         MoveGen::search_ply = 0;
         MoveGen::gen_moves(top->bp);
         MoveGen::sort_moves(MoveGen::search_ply);
 
         top->bp->print_board(CH::WHITE_INDEX);
+        std::cout << EV::eval(top->bp) << std::endl;
         for (int idx = 0; idx < MoveGen::search_index; idx++) {
             Move::move32 mv = MoveGen::search_moves_128x30[idx];
             std::cout << Move::name(mv) << " ";
@@ -77,6 +80,18 @@ int main (int args, char** argv) {
             top = top->prev;
             tmp->prev = nullptr;
             delete tmp;
+        } else if (instr == "go") {
+            search_depth = -1;
+            while (search_depth < 1) {
+                std::cin >> search_depth;
+            }
+            Move::move32 engine_move = Search::search(top->bp, search_depth, -99999, 99999);
+            stack_node* next = new stack_node;
+            next->bp = MoveGen::make_move(top->bp, engine_move);
+            next->prev = top;
+            top = next;
+        } else if (instr == "eval") {
+            std::cout << "position is:" << EV::eval(top->bp) << std::endl;
         } else if (instr == "0000") {
             stack_node* next = new stack_node;
             next->bp = new Board::board_type(top->bp);

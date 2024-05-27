@@ -3,13 +3,12 @@
 #define PIECE_LOCATION_TABLES_H
 
 
-namespace PLT
-{
+namespace PLT {
     const int read(const int table[64], int sq, bool is_black);
     const float complex_read(int type, int sq, float middlegame_weight, bool is_black);
 
-    extern const int* middlegame_piece_tables[7];
-    extern const int* endgame_piece_tables[7];
+    extern const int* middlegame_piece_tables[6];
+    extern const int* endgame_piece_tables[6];
 
     const int pawns[64] = {
         0, 0, 0, 0, 0, 0, 0, 0,

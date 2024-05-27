@@ -14,4 +14,5 @@ add_executable(uciChess
     compass.cpp
     eval.cpp
     move_gen.cpp
-    piece_location_tables.cpp)
+    piece_location_tables.cpp
+    search.cpp)
