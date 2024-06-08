@@ -170,8 +170,7 @@ void MoveGen::checks_exist(Board::board_type* bp) {
     attackers    |= BB::east_attacks(king, ~bp->occ);
     attackers    |= BB::west_attacks(king, ~bp->occ);
     attackers    &= op_rq;
-
-    double_check  = double_check || (check && attackers);
+    double_check  = double_check || check && attackers || BB::count_bits(attackers) > 1;
     check         = check || attackers;
     // if this is the first check, record the attacking ray
     if (attackers && !check_ray) {
@@ -196,6 +195,7 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     U64 doubles = BB::gen_shift(moves & (bp->black_to_move ? BB::ROW_6 : BB::ROW_3), Dir::PAWN_DIR[bp->black_to_move]) & ~bp->occ;
     U64 promotions = moves & (BB::ROW_1 | BB::ROW_8);
     moves ^= promotions;
+    // if in check, only allow moves that escape check
     moves      &= check ? check_ray : ~0ull;
     doubles    &= check ? check_ray : ~0ull;
     promotions &= check ? check_ray : ~0ull;
@@ -249,50 +249,56 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     }
 
     // is there an ep capture available?
-    U64 epsq = bp->ep_file < 8 ? (BB::A_FILE << bp->ep_file & (bp->black_to_move ? BB::ROW_3 : BB::ROW_6)) : 0ull;
+    U64 ep_bb = bp->ep_file < 8 ? (BB::A_FILE << bp->ep_file & (bp->black_to_move ? BB::ROW_3 : BB::ROW_6)) : 0ull;
     // is the ep pawn delivering check?
-    U64 ep_ray = check_ray & BB::gen_shift(epsq, Dir::PAWN_DIR[!bp->black_to_move]) & bp->pawns & *bp->bb_color[!bp->black_to_move];
-    // if (ep_ray) {
-    //     std::cout << "!!! ep_ray !!!" << std::endl;
-    //     Board::print_board(bp);
-    //     std::cout << "in check: " << check << std::endl;
-    //     Board::print_bitboards(bp);
-    //     BB::print_binary_string(BB::build_binary_string(check_ray), "check_ray");
-    //     BB::print_binary_string(BB::build_binary_string(ep_ray), "ep_ray");
-    //     std::cout << "!!! ep_ray !!!" << std::endl;
-    // }
+    U64 ep_ray = (BB::gen_shift(check_ray, Dir::PAWN_DIR[bp->black_to_move]) == ep_bb) ? ep_bb : 0ull;
 
     // pawn captures east
-    moves = BB::gen_shift(pawns & BB::NOT_H_FILE, Dir::DIRS[4+2*bp->black_to_move]) & (*bp->bb_color[!bp->black_to_move] | epsq);
+    moves = BB::gen_shift(pawns & BB::NOT_H_FILE, Dir::DIRS[4+2*bp->black_to_move]) & (*bp->bb_color[!bp->black_to_move] | ep_bb);
     promotions = moves & (BB::ROW_1 | BB::ROW_8);
     moves ^= promotions;
+    // if in check, only allow moves that escape check
     moves      &= check ? check_ray | ep_ray : ~0ull;
     promotions &= check ? check_ray          : ~0ull;
     while (moves) {
         int endsq = BB::bit_scan_forward(moves);
         int start = endsq - Dir::DIRS[4+2*bp->black_to_move];
-        uint8_t flag = epsq & moves & -moves ? Move::Flag::EN_PASSANT : Move::Flag::CAPTURE;
+        uint8_t flag = ep_bb & moves & -moves ? Move::Flag::EN_PASSANT : Move::Flag::CAPTURE;
         if (pins & BB::sq_bb[start]) { // is the moving pawn pinned?
             if (bp->black_to_move) {
-                if (!(king & BB::NoWe_attacks(BB::sq_bb[start], ~bp->occ))) { // can it capture along the pin ray?
+                if (!(king & BB::NoWe_attacks(BB::sq_bb[start], ~bp->occ))) {
+                    // if the capture is NOT along the pin ray (ie. capturing the pinning piece)
+                    // then it is illegal
                     moves &= moves - 1; // clear the LS1B
                     continue;
                 }
             } else {
-                if (!(king & BB::SoWe_attacks(BB::sq_bb[start], ~bp->occ))) { // can it capture along the pin ray?
+                if (!(king & BB::SoWe_attacks(BB::sq_bb[start], ~bp->occ))) {
+                    // if the capture is NOT along the pin ray (ie. capturing the pinning piece)
+                    // then it is illegal
                     moves &= moves - 1; // clear the LS1B
                     continue;
                 }
             }
+        } else if (flag == Move::Flag::EN_PASSANT) {
+            // TODO: this fixes the false "pin" of a pawn and its ep target to the king revealing an op's attacker
+            // TODO: is there a better solution?
+            U64 rooks = *bp->bb_color[!bp->black_to_move] & (bp->rooks | bp->queens);
+            U64 empty = ~(bp->occ ^ (BB::sq_bb[start] | BB::gen_shift(ep_bb, Dir::PAWN_DIR[!bp->black_to_move])));
+            if (rooks & (BB::east_attacks(king, empty) | BB::west_attacks(king, empty))) {
+                moves &= moves - 1;
+                continue;
+            }
         }
         int target = flag == Move::Flag::EN_PASSANT ? CH::PAWN : bp->piece_at(endsq);
+
         search_moves_128x30[search_index] = Move::build_move(flag, start, endsq, CH::PAWN, target);
         search_index++;
         moves &= moves - 1; // clear the LS1B
     }
     while (promotions) {
         int endsq = BB::bit_scan_forward(promotions);
-        int start = endsq - Dir::DIRS[5+2*bp->black_to_move];
+        int start = endsq - Dir::DIRS[4+2*bp->black_to_move];
         int target = bp->piece_at(endsq);
         search_moves_128x30[search_index]   = Move::build_move(Move::Flag::CAPTURE_PROMOTE_QUEEN,  start, endsq, CH::PAWN, target);
         search_moves_128x30[search_index+1] = Move::build_move(Move::Flag::CAPTURE_PROMOTE_ROOK,   start, endsq, CH::PAWN, target);
@@ -303,15 +309,16 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
     }
 
     // pawn captures west
-    moves = BB::gen_shift(pawns & BB::NOT_A_FILE, Dir::DIRS[5+2*bp->black_to_move]) & (*bp->bb_color[!bp->black_to_move] | epsq);
+    moves = BB::gen_shift(pawns & BB::NOT_A_FILE, Dir::DIRS[5+2*bp->black_to_move]) & (*bp->bb_color[!bp->black_to_move] | ep_bb);
     promotions = moves & (BB::ROW_1 | BB::ROW_8);
     moves ^= promotions;
+    // if in check, only allow moves that escape check
     moves      &= check ? check_ray | ep_ray : ~0ull;
     promotions &= check ? check_ray          : ~0ull;
     while (moves) {
         int endsq = BB::bit_scan_forward(moves);
         int start = endsq - Dir::DIRS[5+2*bp->black_to_move];
-        uint8_t flag = epsq & moves & -moves ? Move::Flag::EN_PASSANT : Move::Flag::CAPTURE;
+        uint8_t flag = ep_bb & moves & -moves ? Move::Flag::EN_PASSANT : Move::Flag::CAPTURE;
         if (pins & BB::sq_bb[start]) { // is the moving pawn pinned?
             if (bp->black_to_move) {
                 if (!(king & BB::NoEa_attacks(BB::sq_bb[start], ~bp->occ))) {
@@ -323,6 +330,15 @@ void MoveGen::gen_pawn_moves(Board::board_type* bp) {
                     moves &= moves - 1; // clear the LS1B
                     continue;
                 }
+            }
+        } else if (flag == Move::Flag::EN_PASSANT) {
+            // TODO: this fixes the false "pin" of a pawn and its ep target to the king revealing an op's attacker
+            // TODO: is there a better solution?
+            U64 rooks = *bp->bb_color[!bp->black_to_move] & (bp->rooks | bp->queens);
+            U64 empty = ~(bp->occ ^ (BB::sq_bb[start] | BB::gen_shift(ep_bb, Dir::PAWN_DIR[!bp->black_to_move])));
+            if (rooks & (BB::east_attacks(king, empty) | BB::west_attacks(king, empty))) {
+                moves &= moves - 1;
+                continue;
             }
         }
         int target = flag == Move::Flag::EN_PASSANT ? CH::PAWN : bp->piece_at(endsq);
@@ -475,9 +491,6 @@ void MoveGen::gen_king_moves(Board::board_type* bp) {
     const U64 KS_CHECK = bp->black_to_move ? 96ull << 56 : 96; // 0b11 << 5 = 96
     const U64 QS_CHECK = bp->black_to_move ? 12ull << 56 : 12; // 0b11 << 2 = 12
     const U64 QS_OCC   = bp->black_to_move ? 2ull  << 56 : 2 ;
-    // BB::print_binary_string(BB::build_binary_string(KS_CHECK), "KS_CHECK");
-    // BB::print_binary_string(BB::build_binary_string(QS_CHECK), "QS_CHECK");
-    // BB::print_binary_string(BB::build_binary_string(QS_OCC), "QS_OCC");
     search_moves_128x30[search_index] = qk&1 && !(KS_CHECK & (op_atk | bp->occ)) ? Move::build_move(
         Move::Flag::CASTLE_KINGSIDE, ksq, ksq+2, CH::KING, 0
     ) : 0;
@@ -517,13 +530,10 @@ Board::board_type* MoveGen::make_move(Board::board_type* bp, Move::move32 mv) {
     int target = (mv >> 22 & 7) - 1;
     U64 st_bb  = BB::sq_bb[start];
     U64 end_bb = BB::sq_bb[end];
-    // target debug test:
-    // if (target > 0) {
-    //     std::cout << "Capture detected: " << CH::piece_char[target] << std::endl;
-    // }
+
     // moving piece:
     *newb->bb_piece[piece]                                         ^= st_bb;
-    *newb->bb_piece[flag&Move::Flag::PROMOTION ? (mv&7)+1 : piece] ^= end_bb;
+    *newb->bb_piece[flag&Move::Flag::PROMOTION ? (flag&3)+1:piece] ^= end_bb;
     *newb->bb_color[newb->black_to_move]                           ^= st_bb | end_bb;
     // captured piece:
     if (flag & Move::Flag::CAPTURE && flag != Move::Flag::EN_PASSANT) {
@@ -588,7 +598,7 @@ void MoveGen::perft_root(Board::board_type* bp, int d) {
     search_ply = 0;
     clear_array();
     gen_moves(bp);
-    sort_moves(search_ply);
+    // sort_moves(search_ply);
     search_ply++;
     for (int idx = 0; d && idx < 128 && search_moves_128x30[idx]; idx++) {
         Move::move32 mv = search_moves_128x30[idx];
@@ -611,7 +621,7 @@ U64 MoveGen::perft(Board::board_type* bp, int d) {
     if (d == 0) return 1;
 
     gen_moves(bp);
-    sort_moves(search_ply);
+    // sort_moves(search_ply);
     search_ply++;
     U64 count = 0;
     for (int idx = 0; idx < 128 && search_moves_128x30[idx+(search_ply-1<<7)]; idx++) {

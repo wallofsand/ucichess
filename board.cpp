@@ -44,7 +44,6 @@ Board::board_type::board_type(board_type* bp) {
 
 /**
  * decode the FEN string here:
- * rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
  * Fields:
  * 0: Pieces
  * 1: Player to move
@@ -56,16 +55,16 @@ Board::board_type::board_type(board_type* bp) {
 Board::board_type::board_type(std::string fen) {
     int loc = 0;
     // Field 1: piece locations
-    U64 sq = 1ull << 56;
+    U64 sq = 56;
     while (fen[loc] != ' ') {
-        sq = sq >> (fen[loc] == '/') * 8;
-        loc += fen[loc] == '/';
         if ('1' <= fen[loc] && fen[loc] <= '8') {
-            sq = sq << fen[loc] - '0';
+            sq += fen[loc] - '0';
+        } else if (fen[loc] != '/') {
+            *this->bb_piece[CH::char_to_piece(fen[loc])] |= BB::sq_bb[sq];
+            *this->bb_color[CH::char_to_color(fen[loc])] |= BB::sq_bb[sq];
+            sq++;
         } else {
-            *this->bb_piece[CH::char_to_piece(fen[loc])] |= sq;
-            *this->bb_color[CH::char_to_color(fen[loc])] |= sq;
-            sq = sq << 1;
+            sq = (sq - 9) & 56;
         }
         loc++;
     }
@@ -95,7 +94,7 @@ Board::board_type::board_type(std::string fen) {
     }
     // Field 5: halfmove clock
     this->halfmoves = 0;
-    while (fen[loc] != ' ') {
+    while (loc < fen.length() && fen[loc] != ' ') {
         this->halfmoves *= 10;
         this->halfmoves += fen[loc] - '0';
         loc++;
@@ -103,7 +102,7 @@ Board::board_type::board_type(std::string fen) {
     loc++;
     // Field 6: fullmove clock
     this->fullmoves = 0;
-    while (fen[loc] != ' ') {
+    while (loc < fen.length() && fen[loc] != ' ') {
         this->halfmoves *= 10;
         this->halfmoves += fen[loc] - '0';
         loc++;
@@ -151,7 +150,7 @@ void Board::board_type::print_board(bool black_to_move) {
                     : 8*(7-rank) + file;
             int piece = piece_at(sq);
             if (piece == -1) {
-                std::cout << (sq % 2 ? "  | " : ". | ");
+                std::cout << (rank%2 != file%2 ? "  | " : ". | ");
             } else {
                 int color = color_at(sq);
                 std::cout << CH::piece_char[6*color+piece] << " | ";

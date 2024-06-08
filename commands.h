@@ -3,6 +3,7 @@
 #define COMMANDS_H
 
 #include <string>
+#include <iostream>
 
 namespace COM {
     std::string commands[] = {
@@ -34,6 +35,26 @@ namespace COM {
         "infinite",
     };
 
+    int take_command(int args, char** argv) {
+        for (int i = 1; i < args; i++) {
+            std::string instr(*(argv + i));
+            std::cout << i << ": " << instr << std::endl;
+        }
+        return 0;
+    }
+
+    void uci();
+    void debug();
+    void isready();
+    void setoption();
+    void register_engine();
+    void ucinewgame();
+    void position();
+    void go();
+    void stop();
+    void ponderhit();
+    void quit();
+
     void proc(std::string instr) {
         if (instr == "uci")        return uci();
         if (instr == "debug")      return debug();
@@ -48,48 +69,55 @@ namespace COM {
         if (instr == "quit")       return quit();
     }
 
-    static void uci() {
+    void uci() {
         return;
     }
 
-    static void debug() {
+    void debug() {
         return;
     }
 
-    static void isready() {
+    void isready() {
         return;
     }
 
-    static void setoption() {
+    void setoption() {
         return;
     }
 
-    static void register_engine() {
+    void register_engine() {
         return;
     }
 
-    static void ucinewgame() {
+    void ucinewgame() {
         return;
     }
 
-    static void position() {
+    void position() {
         return;
     }
 
-    static void go() {
+    void go() {
         return;
     }
 
-    static void stop() {
+    void stop() {
         return;
     }
 
-    static void ponderhit() {
+    void ponderhit() {
         return;
     }
 
-    static void quit() {
+    void quit() {
         return;
+    }
+
+    void loop() {
+        bool quit = false;
+        while (!quit) {
+            
+        }
     }
 
 } // namespace COM

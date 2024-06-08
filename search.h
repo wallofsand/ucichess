@@ -17,7 +17,7 @@ namespace Search {
     };
 
     static int piece_value[6] = { 100, 320, 330, 500, 980, 20000 };
-    Move::move32 search(Board::board_type* bp, int depth, int alpha, int beta);
+    Move::move32 search(Board::board_type* bp, int depth);
     result root_nega_max(Board::board_type* bp, int depth, int alpha, int beta);
     int nega_max(Board::board_type* bp, int depth, int alpha, int beta);
 } // namespace Search

@@ -4,8 +4,8 @@
 
 using namespace MoveGen;
 
-Move::move32 Search::search(Board::board_type* bp, int depth, int alpha, int beta) {
-    result r = root_nega_max(bp, depth, alpha, beta);
+Move::move32 Search::search(Board::board_type* bp, int depth) {
+    result r = root_nega_max(bp, depth, -99999, 99999);
     return r.move;
 }
 

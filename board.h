@@ -7,16 +7,16 @@
 
 namespace Board {
     struct board_type {
-        U64 occ             = 0;
-        U64 white           = 0;
-        U64 black           = 0;
-        U64 pawns           = 0;
-        U64 knights         = 0;
-        U64 bishops         = 0;
-        U64 rooks           = 0;
-        U64 queens          = 0;
-        U64 kings           = 0;
-        U64 zhash           = 0;
+        U64 occ             = 0ull;
+        U64 white           = 0ull;
+        U64 black           = 0ull;
+        U64 pawns           = 0ull;
+        U64 knights         = 0ull;
+        U64 bishops         = 0ull;
+        U64 rooks           = 0ull;
+        U64 queens          = 0ull;
+        U64 kings           = 0ull;
+        U64 zhash           = 0ull;
         uint8_t ep_file     = 8; // 8 to store no en passant allowed
         uint8_t castle_qkQK = 0b0000;
         bool black_to_move  = false;

@@ -28,7 +28,7 @@ namespace CH {
                ch == 'N' || ch == 'n' ? KNIGHT :
                ch == 'B' || ch == 'b' ? BISHOP :
                ch == 'R' || ch == 'r' ? ROOK :
-               ch == 'Q' || ch == 'Q' ? QUEEN :
+               ch == 'Q' || ch == 'q' ? QUEEN :
                ch == 'K' || ch == 'k' ? KING : -1;
     }
     inline bool char_to_color(char ch) {

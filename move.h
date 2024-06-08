@@ -55,14 +55,14 @@ namespace Move {
     } // namespace Flag
 
     inline move32 build_move(int flag, int start, int end, int piece, int target) {
-        return (flag&4?(target+1)&7:0) << 22 | (~piece&7) << 19 | piece << 16 | end << 10 | start << 4 | flag;
+        return (flag & Flag::CAPTURE ? (target+1) & 7 : 0) << 22 | (~piece&7) << 19 | piece << 16 | end << 10 | start << 4 | flag;
     }
 
     inline std::string name(move32 mv) {
         std::string start = SQ::string_from_square[mv>> 4&63];
         std::string end   = SQ::string_from_square[mv>>10&63];
         int flag = mv & Flag::PROMOTE_QUEEN;
-        std::string promo = flag == Flag::PROMOTE_KNIGHT ? "k" :
+        std::string promo = flag == Flag::PROMOTE_KNIGHT ? "n" :
                             flag == Flag::PROMOTE_BISHOP ? "b" :
                             flag == Flag::PROMOTE_ROOK   ? "r" :
                             flag == Flag::PROMOTE_QUEEN  ? "q" :

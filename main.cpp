@@ -11,6 +11,7 @@
 #include "square.h"
 #include "move_gen.h"
 #include "search.h"
+#include "commands.h"
 
 struct stack_node {
     Board::board_type* bp = nullptr;
@@ -21,7 +22,7 @@ struct stack_node {
     }
 };
 
-int main (int args, char** argv) {
+int main_loop(int args, char** argv) {
     // precompute board data
     BB::init_sq_bb();
     Compass::compute_edge_distances();
@@ -30,7 +31,7 @@ int main (int args, char** argv) {
     Compass::compute_king_attacks();
 
     stack_node* top = new stack_node;
-    top->bp = new Board::board_type();
+    top->bp = new Board::board_type("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - ");
     // Board::board_type* board = Board::new_game();
 
     // MoveGen::perft_root(top->bp, 2);
@@ -52,7 +53,7 @@ int main (int args, char** argv) {
         MoveGen::sort_moves(MoveGen::search_ply);
 
         top->bp->print_board(CH::WHITE_INDEX);
-        std::cout << EV::eval(top->bp) << std::endl;
+        // std::cout << EV::eval(top->bp) << std::endl;
         for (int idx = 0; idx < MoveGen::search_index; idx++) {
             Move::move32 mv = MoveGen::search_moves_128x30[idx];
             std::cout << Move::name(mv) << " ";
@@ -64,11 +65,10 @@ int main (int args, char** argv) {
 
         // Move input
         for (int idx = 0; idx < MoveGen::search_index; idx++) {
-            Move::move32 mv = MoveGen::search_moves_128x30[idx];
-            std::string mvstr = SQ::string_from_square[mv>>4&63] + SQ::string_from_square[mv>>10&63];
-            if (instr == mvstr) {
+            if (instr == Move::name(MoveGen::search_moves_128x30[idx])) {
                 stack_node* next = new stack_node;
-                next->bp = MoveGen::make_move(top->bp, mv);
+                std::cout << Move::to_string(MoveGen::search_moves_128x30[idx]) << std::endl;
+                next->bp = MoveGen::make_move(top->bp, MoveGen::search_moves_128x30[idx]);
                 next->prev = top;
                 top = next;
             }
@@ -85,7 +85,7 @@ int main (int args, char** argv) {
             while (search_depth < 1) {
                 std::cin >> search_depth;
             }
-            Move::move32 engine_move = Search::search(top->bp, search_depth, -99999, 99999);
+            Move::move32 engine_move = Search::search(top->bp, search_depth);
             stack_node* next = new stack_node;
             next->bp = MoveGen::make_move(top->bp, engine_move);
             next->prev = top;
@@ -123,4 +123,10 @@ int main (int args, char** argv) {
         } else if (instr == "end" || instr == "stop" || instr == "quit") running = false;
     }
     return 0;
+}
+
+int main(int args, char** argv) {
+    if (args == 1)
+        return main_loop(args, argv);
+    return COM::take_command(args, argv);
 }
